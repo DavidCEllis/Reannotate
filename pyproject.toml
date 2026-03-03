@@ -1,0 +1,54 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[project]
+name = "reannotate"
+description="An extension to annotationlib to assist in creating new annotate functions"
+authors = [
+  { name="David C Ellis" },
+]
+requires-python = ">=3.14"
+classifiers = [
+    "Programming Language :: Python",
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
+    "Operating System :: OS Independent",
+]
+license = "PSF-2.0"
+readme="README.md"
+dynamic = ['version']
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4",
+    "pytest-cov>=6.1",
+]
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/reannotate/_version.py"
+template = """
+__version__ = "{version}"
+__version_tuple__ = {version_tuple}
+"""
+
+
+[tool.pytest.ini_options]
+addopts= "--cov=src/ --cov-report=term-missing"
+testpaths = [
+    "tests",
+]
+
+[tool.coverage.report]
+# Exclude vendored code
+exclude_also = [
+    "class _Stringifier",
+    "class _StringifierDict",
+    "def _build_closure",
+    "def __repr__",
+]
