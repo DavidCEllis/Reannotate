@@ -52,7 +52,7 @@ def call_annotate_deferred(annotate, *, owner=None, skip_globals_check=False, _i
     """
 
     try:
-        return annotate._deferred_annotations
+        return annotate.deferred_annotations
     except AttributeError:
         pass
 
@@ -122,7 +122,8 @@ def get_deferred_annotations(obj, *, skip_globals_check=False):
         ann = call_annotate_deferred(annotate, owner=obj, skip_globals_check=skip_globals_check)
         if not isinstance(ann, dict):
             raise ValueError(f"{obj!r}.__annotate__ returned a non-dict")
-        return dict(ann)
+        # call_annotate_deferred will always return a new dict
+        return ann
 
     # Fallback, try `__annotations__`
     ann = _get_dunder_annotations(obj)
@@ -448,7 +449,10 @@ class ReAnnotate:
     Create a new `__annotate__` callable from existing annotations.
 
     If the annotations are DeferredAnnotation objects, these are used directly.
-    Otherwise they will be converted
+    Otherwise they will be converted.
+
+    Internally in Python 3.15+ these are stored as a frozendict to prevent
+    modification.
     """
     __slots__ = ("_deferred_annotations",)
     def __init__(self, annotations):
@@ -461,10 +465,14 @@ class ReAnnotate:
             else:
                 new_annos[k] = DeferredAnnotation(v)
 
-        self._deferred_annotations = {
-            k: v if isinstance(v, DeferredAnnotation) else DeferredAnnotation(v)
-            for k, v in annotations.items()
-        }
+        try:
+            self._deferred_annotations = frozendict(new_annos)
+        except NameError:
+            self._deferred_annotations = new_annos
+
+    @property
+    def deferred_annotations(self):
+        return dict(self._deferred_annotations)
 
     def __call__(self, format, /):
         match format:
@@ -474,4 +482,4 @@ class ReAnnotate:
                 raise NotImplementedError(format)
 
     def __repr__(self):
-        return f"{type(self).__name__}({self._deferred_annotations!r})"
+        return f"{type(self).__name__}({self.deferred_annotations!r})"
