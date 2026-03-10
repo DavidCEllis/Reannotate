@@ -28,112 +28,12 @@ from annotationlib import (
     type_repr,
 )
 
-# I don't want to import typing!
-type _alias = str
-_TypeAliasType = type(_alias)
-del _alias
-
-
 class _Sentinel:
     # Sentinel object for the case where None is valid
     def __repr__(self):
         return "<Sentinel Object>"
 
 _sentinel = _Sentinel()
-
-
-def call_annotate_deferred(annotate, *, owner=None, skip_globals_check=False, _is_evaluate=False):
-    """
-    Call an annotate function in a way to retrieve deferred annotations
-
-    :param annotate: `__annotate__` function
-    :param owner: The object thaat owns the annotate function, if it exists
-    :param skip_globals_check: Skip the call to VALUE_WITH_FAKE_GLOBALS - assume it is supported
-    """
-
-    try:
-        return annotate.deferred_annotations
-    except AttributeError:
-        pass
-
-    value_annotations = _sentinel
-
-    if not skip_globals_check:
-        # If the globals check is done, try to use the globals it returns to cache if successful
-        try:
-            # Used to cache value annotations for deferred if successful
-            value_annotations = annotate(Format.VALUE_WITH_FAKE_GLOBALS)
-        except NotImplementedError:
-            # Both STRING and VALUE_WITH_FAKE_GLOBALS are not implemented: fallback to VALUE
-            return {
-                k: DeferredAnnotation(v)
-                for k, v in annotate(Format.VALUE).items()
-            }
-        except Exception:
-            pass
-
-    # Deferred annotations are built on STRING annotations
-    globals = _StringifierDict({}, format=Format.STRING)
-    is_class = isinstance(owner, type)
-    closure, cell_dict = _build_closure(
-        annotate, owner, is_class, globals, allow_evaluation=False
-    )
-    func = types.FunctionType(
-        annotate.__code__,
-        globals,
-        closure=closure,
-        argdefs=annotate.__defaults__,
-        kwdefaults=annotate.__kwdefaults__,
-    )
-    annos = func(Format.VALUE_WITH_FAKE_GLOBALS)
-
-    context = EvaluationContext(
-        globals=annotate.__globals__,
-        locals=None,
-        owner=owner,
-        is_class=is_class,
-        cells=cell_dict,
-    )
-
-    if _is_evaluate:
-        return DeferredAnnotation(
-            annos.__ast_node__ if isinstance(annos, _Stringifier) else _stringify_single(annos),
-            evaluation_context=context,
-            resolved_value=value_annotations,
-        )
-    else:
-        return {
-            key: DeferredAnnotation(
-                val.__ast_node__ if isinstance(val, _Stringifier) else _stringify_single(val),
-                evaluation_context=context,
-                resolved_value=value_annotations[key] if value_annotations is not _sentinel else _sentinel,
-            )
-            for key, val in annos.items()
-        }
-
-
-def get_deferred_annotations(obj, *, skip_globals_check=False):
-    """
-    Extend annotationlib.get_annotations to handle `Format.DEFERRED`
-    """
-    annotate = getattr(obj, "__annotate__", None)
-
-    if annotate is not None:
-        ann = call_annotate_deferred(annotate, owner=obj, skip_globals_check=skip_globals_check)
-        if not isinstance(ann, dict):
-            raise ValueError(f"{obj!r}.__annotate__ returned a non-dict")
-        # call_annotate_deferred will always return a new dict
-        return ann
-
-    # Fallback, try `__annotations__`
-    ann = _get_dunder_annotations(obj)
-
-    if ann is not None:
-        return {k: DeferredAnnotation(v) for k, v in ann.items()}
-    elif isinstance(obj, type) or callable(obj):
-        return {}
-
-    raise TypeError(f"{obj!r} does not have annotations")
 
 
 # New classes and functions
@@ -170,7 +70,7 @@ class EvaluationContext:
         self._cells = cells
         self._type_params = type_params
 
-    def _compare_cells(self, other: object) -> bool:
+    def _compare_cells(self, other):
         # Needed for `__eq__`
         if self._cells is other._cells:
             return True
@@ -182,7 +82,7 @@ class EvaluationContext:
             and all(self._cells[k] is other._cells[k] for k in self._cells)
         )
 
-    def __eq__(self, other: object) -> bool:
+    def __eq__(self, other):
         if not isinstance(other, EvaluationContext):
             return NotImplemented
 
@@ -268,7 +168,7 @@ class EvaluationContext:
 
 
 # This is needed to convert a ForwardRef to a DeferredAnnotation
-def get_forwardref_evaluation_context(ref, globals=None, locals=None, type_params=None, owner=None):
+def _get_forwardref_evaluation_context(ref, globals=None, locals=None, type_params=None, owner=None):
     # Get the globals and locals contexts for reference evaluation
     if owner is None:
         owner = ref.__owner__
@@ -338,16 +238,6 @@ class DeferredAnnotation:
         self._as_str = None
         self._resolved_value = resolved_value
 
-    @staticmethod
-    def from_typealias(alias, *, owner=None):
-        # Type aliases are not automatically converted
-        # Using from_typealias will make them convert.
-        return call_annotate_deferred(
-            alias.evaluate_value,
-            owner=owner,
-            _is_evaluate=True
-        )
-
     def __eq__(self, other):
         if not isinstance(other, DeferredAnnotation):
             return NotImplemented
@@ -386,7 +276,7 @@ class DeferredAnnotation:
     def evaluation_context(self):
         if self._evaluation_context is None:
             if isinstance(self._obj, ForwardRef):
-                self._evaluation_context = get_forwardref_evaluation_context(self._obj)
+                self._evaluation_context = _get_forwardref_evaluation_context(self._obj)
 
         return self._evaluation_context
 
@@ -456,15 +346,10 @@ class ReAnnotate:
     """
     __slots__ = ("_deferred_annotations",)
     def __init__(self, annotations):
-        new_annos = {}
-        for k, v in annotations.items():
-            if isinstance(v, DeferredAnnotation):
-                new_annos[k] = v
-            elif isinstance(v, _TypeAliasType):
-                new_annos[k] = DeferredAnnotation.from_typealias(v)
-            else:
-                new_annos[k] = DeferredAnnotation(v)
-
+        new_annos = {
+            k: v if isinstance(v, DeferredAnnotation) else DeferredAnnotation(v)
+            for k, v in annotations.items()
+        }
         try:
             self._deferred_annotations = frozendict(new_annos)
         except NameError:
@@ -483,3 +368,106 @@ class ReAnnotate:
 
     def __repr__(self):
         return f"{type(self).__name__}({self.deferred_annotations!r})"
+
+
+def call_annotate_deferred(annotate, *, owner=None, skip_globals_check=False, _is_evaluate=False):
+    """
+    Call an annotate function in a way to retrieve deferred annotations
+
+    :param annotate: `__annotate__` function
+    :param owner: The object thaat owns the annotate function, if it exists
+    :param skip_globals_check: Skip the call to VALUE_WITH_FAKE_GLOBALS - assume it is supported
+    """
+
+    try:
+        return annotate.deferred_annotations
+    except AttributeError:
+        pass
+
+    value_annotations = _sentinel
+
+    if not skip_globals_check:
+        # If the globals check is done, try to use the globals it returns to cache if successful
+        try:
+            # Used to cache value annotations for deferred if successful
+            value_annotations = annotate(Format.VALUE_WITH_FAKE_GLOBALS)
+        except NotImplementedError:
+            # Both STRING and VALUE_WITH_FAKE_GLOBALS are not implemented: fallback to VALUE
+            return {
+                k: DeferredAnnotation(v)
+                for k, v in annotate(Format.VALUE).items()
+            }
+        except Exception:
+            pass
+
+    # Deferred annotations are built on STRING annotations
+    globals = _StringifierDict({}, format=Format.STRING)
+    is_class = isinstance(owner, type)
+    closure, cell_dict = _build_closure(
+        annotate, owner, is_class, globals, allow_evaluation=False
+    )
+    func = types.FunctionType(
+        annotate.__code__,
+        globals,
+        closure=closure,
+        argdefs=annotate.__defaults__,
+        kwdefaults=annotate.__kwdefaults__,
+    )
+    annos = func(Format.VALUE_WITH_FAKE_GLOBALS)
+
+    context = EvaluationContext(
+        globals=annotate.__globals__,
+        locals=None,
+        owner=owner,
+        is_class=is_class,
+        cells=cell_dict,
+    )
+
+    if _is_evaluate:
+        return DeferredAnnotation(
+            annos.__ast_node__ if isinstance(annos, _Stringifier) else _stringify_single(annos),
+            evaluation_context=context,
+            resolved_value=value_annotations,
+        )
+    else:
+        return {
+            key: DeferredAnnotation(
+                val.__ast_node__ if isinstance(val, _Stringifier) else _stringify_single(val),
+                evaluation_context=context,
+                resolved_value=value_annotations[key] if value_annotations is not _sentinel else _sentinel,
+            )
+            for key, val in annos.items()
+        }
+
+
+def call_evaluate_deferred(evaluate, *, owner=None, skip_globals_check=False):
+    return call_annotate_deferred(
+        evaluate,
+        owner=owner,
+        skip_globals_check=skip_globals_check,
+        _is_evaluate=True
+    )
+
+
+def get_deferred_annotations(obj, *, skip_globals_check=False):
+    """
+    Extend annotationlib.get_annotations to handle `Format.DEFERRED`
+    """
+    annotate = getattr(obj, "__annotate__", None)
+
+    if annotate is not None:
+        ann = call_annotate_deferred(annotate, owner=obj, skip_globals_check=skip_globals_check)
+        if not isinstance(ann, dict):
+            raise ValueError(f"{obj!r}.__annotate__ returned a non-dict")
+        # call_annotate_deferred will always return a new dict
+        return ann
+
+    # Fallback, try `__annotations__`
+    ann = _get_dunder_annotations(obj)
+
+    if ann is not None:
+        return {k: DeferredAnnotation(v) for k, v in ann.items()}
+    elif isinstance(obj, type) or callable(obj):
+        return {}
+
+    raise TypeError(f"{obj!r} does not have annotations")
