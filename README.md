@@ -3,8 +3,10 @@
 This library acts as an extension to the new deferred annotations that arrived as part of PEP-649/749
 in Python 3.14.
 
-The main goal of this library is to help handling cases where you need to retrieve the annotations at one point
-but evaluate them later. One main use case being for creating new `__annotate__` callables.
+Its main purpose is to make it as easy to modify and create `__annotate__` functions as it was to modify
+the `__annotations__` dictionary in earlier versions of Python.
+
+It also makes it easy to retrieve annotations and evaluate them individually.
 
 Unlike `Format.FORWARDREF`, `get_deferred_annotations` will always return `DeferredAnnotation` objects as the values
 of the annotations dictionary.
@@ -52,16 +54,17 @@ If a value is defined at a later point, the annotation can be evaluated fully.
 unknown = float
 
 print(annos['b'].evaluate())
+print(annos['b'].is_resolved)  # If a DeferredAnnotation has been fully evaluated, this is set to True
 ```
 
 ```python
 list[float]
+True
 ```
 
 ## Creating a new `__annotate__` callable ##
 
 Instances of the `ReAnnotate` class are intended to act as `__annotate__` callables.
-
 
 ```python
 from annotationlib import call_annotate_function, Format
@@ -82,19 +85,30 @@ print(call_annotate_function(new_annos, format=Format.FORWARDREF))
 {'a': <class 'int'>, 'b': list[ForwardRef('undefined', is_class=True, owner=<class '__main__.Example'>)]}
 ```
 
-This can be useful for example if you wish to add fields to a dataclass. As dataclasses require fields
-exist in the annotations, this is more difficult to do cleanly in Python 3.14+.
+## Use case examples ##
+
+### Adding fields automatically to a dataclass ###
+
+With the new annotations in Python 3.14 it is no longer always possible to retrieve `__annotations__`.
+To correctly handle inserting a field into a dataclass it is necessary to create a new `__annotate__` function.
+
+`reannotate` provides `get_deferred_annotations` and `ReAnnotate` to help make this as easy as modifying
+`__annotations__` in earlier versions of Python.
 
 ```python
+from annotationlib import get_annotations, Format
 from dataclasses import dataclass, field
 from functools import wraps
+
 from reannotate import get_deferred_annotations, ReAnnotate
 
 def debug_dataclass(cls):
+    # Gets all annotations in an unevaluated format
     annos = get_deferred_annotations(cls)
 
     annos |= {"_used_kwargs": dict[str, object]}
 
+    # ReAnnotate instances are callables that replace the `__annotate__` function
     cls.__annotate__ = ReAnnotate(annos)
 
     setattr(cls, "_used_kwargs", field(init=False, repr=False, compare=False))
@@ -113,12 +127,38 @@ def debug_dataclass(cls):
 
 @debug_dataclass
 class Example:
-    a: int = 42
-    b: str = "Zaphod"
+    answer: int = 42
+    name: str = "Zaphod"
+    mystery: Unknown = field(default=None, repr=False)
 
-print(Example.__annotations__)  # {'a': <class 'int'>, 'b': <class 'str'>, '_used_kwargs': dict[str, object]}
 print(Example()._used_kwargs)  # {}
-print(Example(54, b="Dent")._used_kwargs)  # {'b': 'Dent'}
+print(Example(54, name="Dent")._used_kwargs)  # {'name': 'Dent'}
+
+# Define Unknown here and it will allow the annotations to evaluate
+Unknown = None | str
+print(get_annotations(Example))  # {'answer': <class 'int'>, 'name': <class 'str'>, 'mystery': None | str, '_used_kwargs': dict[str, object]}
+```
+
+### Checking which annotations can be evaluated ###
+
+With the `FORWARDREF` format, it is not simple to know which annotations would fail to evaluate as
+forward references can be contained in other arbitrary objects.
+
+`DeferredAnnotation` instances have an `.is_resolved` property which indicates if the annotation
+has been fully evaluated.
+
+```python
+from annotationlib import Format
+from reannotate import get_deferred_annotations
+
+def f(a: str, b: list[undefined]): ...
+
+annos = get_deferred_annotations(f)
+
+print(annos['a'].evaluate(format=Format.FORWARDREF))  # <class 'str'>
+print(annos['a'].is_resolved)  # True
+print(annos['b'].evaluate(format=Format.FORWARDREF))  # list[ForwardRef('undefined', ...)]
+print(annos['b'].is_resolved)  # False
 ```
 
 ## What about... ##
