@@ -1,8 +1,8 @@
 import typing
 import unittest
 
-from annotationlib import ForwardRef
-from reannotate import DeferredAnnotation, Format, call_annotate_function, get_annotations, make_annotate_function
+from annotationlib import ForwardRef, Format, call_annotate_function, get_annotations
+from reannotate import DeferredAnnotation, call_annotate_deferred, get_deferred_annotations, ReAnnotate
 
 
 class TestDeferredFormat(unittest.TestCase):
@@ -15,8 +15,6 @@ class TestDeferredFormat(unittest.TestCase):
         self.assertEqual(deferred_str.evaluate(format=Format.FORWARDREF), str)
         self.assertEqual(deferred_str.evaluate(format=Format.STRING), "str")
 
-        self.assertIs(deferred_str.evaluate(format=Format.DEFERRED), deferred_str)
-
         container = dict[str, list[int]]
         deferred_container = DeferredAnnotation(container)
 
@@ -24,7 +22,6 @@ class TestDeferredFormat(unittest.TestCase):
         self.assertEqual(deferred_container.evaluate(format=Format.FORWARDREF), container)
         self.assertEqual(deferred_container.evaluate(format=Format.STRING), "dict[str, list[int]]")
 
-        self.assertIs(deferred_container.evaluate(format=Format.DEFERRED), deferred_container)
 
     def test_create_from_string(self):
         # Create a DeferredAnnotation from string annotations
@@ -36,16 +33,12 @@ class TestDeferredFormat(unittest.TestCase):
         self.assertEqual(deferred_str.evaluate(format=Format.FORWARDREF), "str")
         self.assertEqual(deferred_str.evaluate(format=Format.STRING), "str")
 
-        self.assertIs(deferred_str.evaluate(format=Format.DEFERRED), deferred_str)
-
         container = "dict[str, list[int]]"
         deferred_container = DeferredAnnotation(container)
 
         self.assertEqual(deferred_container.evaluate(format=Format.VALUE), container)
         self.assertEqual(deferred_container.evaluate(format=Format.FORWARDREF), container)
         self.assertEqual(deferred_container.evaluate(format=Format.STRING), container)
-
-        self.assertIs(deferred_container.evaluate(format=Format.DEFERRED), deferred_container)
 
     def test_create_from_forwardref(self):
         # Create a DeferredAnnotation from an undefined ForwardRef
@@ -91,8 +84,8 @@ class TestDeferredFormat(unittest.TestCase):
         # From Annotations
         def f(x: str, y: undefined): ...  # type: ignore # noqa: F821
 
-        annos = get_annotations(f, format=Format.DEFERRED)
-        eq_annos = get_annotations(f, format=Format.DEFERRED)
+        annos = get_deferred_annotations(f)
+        eq_annos = get_deferred_annotations(f)
 
         self.assertEqual(annos, eq_annos)
 
@@ -102,8 +95,8 @@ class TestDeferredFormat(unittest.TestCase):
         # Test the eq method when deferred annotations use AST objects internally
         def f(a: dict[str, int]): ...
 
-        annos = get_annotations(f, format=Format.DEFERRED)
-        anno_rep = get_annotations(f, format=Format.DEFERRED)
+        annos = get_deferred_annotations(f)
+        anno_rep = get_deferred_annotations(f)
 
         self.assertEqual(annos['a'], anno_rep['a'])
 
@@ -122,7 +115,7 @@ class TestDeferredFormat(unittest.TestCase):
         class Example:
             a: m.undefined  # type: ignore
 
-        annos = get_annotations(Example, format=Format.DEFERRED)
+        annos = get_deferred_annotations(Example)
 
         with self.assertRaises(AttributeError):
             annos['a'].evaluate(format=Format.VALUE)
@@ -149,7 +142,7 @@ class TestDeferredFormat(unittest.TestCase):
             c: variable  # type: ignore
 
         value_annos = get_annotations(Example, format=Format.VALUE)
-        deferred_annos = get_annotations(Example, format=Format.DEFERRED)
+        deferred_annos = get_deferred_annotations(Example)
 
         self.assertEqual(
             value_annos,
@@ -172,7 +165,7 @@ class TestDeferredFormat(unittest.TestCase):
         class Example:
             a: list[undefined]  # type: ignore
 
-        a_anno = get_annotations(Example, format=Format.DEFERRED)['a']
+        a_anno = get_deferred_annotations(Example)['a']
         a_anno.evaluate(format=Format.FORWARDREF)
 
         self.assertFalse(a_anno.is_evaluated)
@@ -192,7 +185,7 @@ class TestDeferredFormat(unittest.TestCase):
             e: (str, int)  # type: ignore
             f: typing.attribute_error
 
-        annos = get_annotations(Example, format=Format.DEFERRED)
+        annos = get_deferred_annotations(Example)
 
         for anno in annos.values():
             self.assertIsInstance(anno, DeferredAnnotation)
@@ -205,7 +198,7 @@ class TestDeferredFormat(unittest.TestCase):
             a: list[...]  # type: ignore
             b: undefined  # Prevent caching from VALUE_WITH_FAKE_GLOBALS  # type: ignore  # noqa: F821
 
-        annos = get_annotations(Example, format=Format.DEFERRED)
+        annos = get_deferred_annotations(Example)
 
         self.assertEqual(
             list[...],  # type: ignore
@@ -217,8 +210,8 @@ class TestMakeAnnotateFunction(unittest.TestCase):
     def test_remade_annotation(self):
         def f(a: int) -> str: ...
 
-        def_annos = get_annotations(f, format=Format.DEFERRED)
-        new_annotate = make_annotate_function(def_annos)
+        def_annos = get_deferred_annotations(f)
+        new_annotate = ReAnnotate(def_annos)
 
         for fmt in Format:
             if fmt == Format.VALUE_WITH_FAKE_GLOBALS:
@@ -234,8 +227,8 @@ class TestMakeAnnotateFunction(unittest.TestCase):
         # annotations are collected.
         def f(a: undefined): ...  # type: ignore
 
-        def_annos = get_annotations(f, format=Format.DEFERRED)
-        new_annotate = make_annotate_function(def_annos)
+        def_annos = get_deferred_annotations(f)
+        new_annotate = ReAnnotate(def_annos)
 
         for fmt in Format:
             if fmt in {Format.VALUE, Format.VALUE_WITH_FAKE_GLOBALS}:
@@ -264,8 +257,8 @@ class TestMakeAnnotateFunction(unittest.TestCase):
     def test_fakeglobals_raises(self):
         def f(a: int) -> str: ...
 
-        def_annos = get_annotations(f, format=Format.DEFERRED)
-        new_annotate = make_annotate_function(def_annos)
+        def_annos = get_deferred_annotations(f)
+        new_annotate = ReAnnotate(def_annos)
 
         with self.assertRaises(NotImplementedError):
             new_annotate(Format.VALUE_WITH_FAKE_GLOBALS)

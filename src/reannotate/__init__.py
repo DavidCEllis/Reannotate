@@ -13,23 +13,25 @@ some parts in the middle of `call_annotate_function`.
 
 import ast
 import builtins
-import enum
 import types
 import sys
 
 
 from annotationlib import (
-    call_annotate_function as _annotationlib_call_annotate_function,
-    get_annotations as _annotationlib_get_annotations,
-
-    _SLOTS,
-    _Template,
+    _build_closure,
     _get_dunder_annotations,
     _stringify_single,
-    _template_to_ast,
+    _Stringifier,
+    _StringifierDict,
+    Format,
     ForwardRef,
     type_repr,
 )
+
+# I don't want to import typing!
+type _alias = str
+_TypeAliasType = type(_alias)
+del _alias
 
 
 class _Sentinel:
@@ -40,373 +42,38 @@ class _Sentinel:
 _sentinel = _Sentinel()
 
 
-class Format(enum.IntEnum):
-    VALUE = 1
-    VALUE_WITH_FAKE_GLOBALS = 2
-    FORWARDREF = 3
-    STRING = 4
-
-    # Hopefully there will never be 5000 formats for annotations
-    # A high number is used in case new formats are added
-    DEFERRED = 5000
-
-
-# _Stringifier and _StringifierDict are vendored with slight modifications from annotationlib
-# This is necessary to correctly support Format.DEFERRED
-# We can't subclass and add methods due to name mangling :(
-class _Stringifier:
-    # Must match the slots on ForwardRef, so we can turn an instance of one into an
-    # instance of the other in place.
-    __slots__ = _SLOTS
-
-    def __init__(
-        self,
-        node,
-        globals=None,
-        owner=None,
-        is_class=False,
-        cell=None,
-        *,
-        stringifier_dict,
-        extra_names=None,
-    ):
-        # Either an AST node or a simple str (for the common case where a ForwardRef
-        # represent a single name).
-        assert isinstance(node, (ast.AST, str))
-        self.__arg__ = None
-        self.__forward_is_argument__ = False
-        self.__forward_is_class__ = is_class
-        self.__forward_module__ = None
-        self.__code__ = None
-        self.__ast_node__ = node
-        self.__globals__ = globals
-        self.__extra_names__ = extra_names
-        self.__cell__ = cell
-        self.__owner__ = owner
-        self.__stringifier_dict__ = stringifier_dict
-
-    def __convert_to_ast(self, other):
-        if isinstance(other, _Stringifier):
-            if isinstance(other.__ast_node__, str):
-                return ast.Name(id=other.__ast_node__), other.__extra_names__
-            return other.__ast_node__, other.__extra_names__
-        elif type(other) is _Template:
-            return _template_to_ast(other), None
-        elif (
-            # In STRING format we don't bother with the create_unique_name() dance;
-            # it's better to emit the repr() of the object instead of an opaque name.
-            # For the DEFERRED format similarly we should not be creating names.
-            self.__stringifier_dict__.format in {Format.STRING, Format.DEFERRED}
-            or other is None
-            or type(other) in (str, int, float, bool, complex)
-        ):
-            return ast.Constant(value=other), None
-        elif type(other) is dict:
-            extra_names = {}
-            keys = []
-            values = []
-            for key, value in other.items():
-                new_key, new_extra_names = self.__convert_to_ast(key)
-                if new_extra_names is not None:
-                    extra_names.update(new_extra_names)
-                keys.append(new_key)
-                new_value, new_extra_names = self.__convert_to_ast(value)
-                if new_extra_names is not None:
-                    extra_names.update(new_extra_names)
-                values.append(new_value)
-            return ast.Dict(keys, values), extra_names
-        elif type(other) in (list, tuple, set):
-            extra_names = {}
-            elts = []
-            for elt in other:
-                new_elt, new_extra_names = self.__convert_to_ast(elt)
-                if new_extra_names is not None:
-                    extra_names.update(new_extra_names)
-                elts.append(new_elt)
-            ast_class = {list: ast.List, tuple: ast.Tuple, set: ast.Set}[type(other)]
-            return ast_class(elts), extra_names
-        else:
-            name = self.__stringifier_dict__.create_unique_name()
-            return ast.Name(id=name), {name: other}
-
-    def __convert_to_ast_getitem(self, other):
-        if isinstance(other, slice):
-            extra_names = {}
-
-            def conv(obj):
-                if obj is None:
-                    return None
-                new_obj, new_extra_names = self.__convert_to_ast(obj)
-                if new_extra_names is not None:
-                    extra_names.update(new_extra_names)
-                return new_obj
-
-            return ast.Slice(
-                lower=conv(other.start),
-                upper=conv(other.stop),
-                step=conv(other.step),
-            ), extra_names
-        else:
-            return self.__convert_to_ast(other)
-
-    def __get_ast(self):
-        node = self.__ast_node__
-        if isinstance(node, str):
-            return ast.Name(id=node)
-        return node
-
-    def __make_new(self, node, extra_names=None):
-        new_extra_names = {}
-        if self.__extra_names__ is not None:
-            new_extra_names.update(self.__extra_names__)
-        if extra_names is not None:
-            new_extra_names.update(extra_names)
-        stringifier = _Stringifier(
-            node,
-            self.__globals__,
-            self.__owner__,
-            self.__forward_is_class__,
-            stringifier_dict=self.__stringifier_dict__,
-            extra_names=new_extra_names or None,
-        )
-        self.__stringifier_dict__.stringifiers.append(stringifier)
-        return stringifier
-
-    # Must implement this since we set __eq__. We hash by identity so that
-    # stringifiers in dict keys are kept separate.
-    def __hash__(self):
-        return id(self)
-
-    def __getitem__(self, other):
-        # Special case, to avoid stringifying references to class-scoped variables
-        # as '__classdict__["x"]'.
-        if self.__ast_node__ == "__classdict__":
-            raise KeyError
-        if isinstance(other, tuple):
-            extra_names = {}
-            elts = []
-            for elt in other:
-                new_elt, new_extra_names = self.__convert_to_ast_getitem(elt)
-                if new_extra_names is not None:
-                    extra_names.update(new_extra_names)
-                elts.append(new_elt)
-            other = ast.Tuple(elts)
-        else:
-            other, extra_names = self.__convert_to_ast_getitem(other)
-        assert isinstance(other, ast.AST), repr(other)
-        return self.__make_new(ast.Subscript(self.__get_ast(), other), extra_names)
-
-    def __getattr__(self, attr):
-        return self.__make_new(ast.Attribute(self.__get_ast(), attr))
-
-    def __call__(self, *args, **kwargs):
-        extra_names = {}
-        ast_args = []
-        for arg in args:
-            new_arg, new_extra_names = self.__convert_to_ast(arg)
-            if new_extra_names is not None:
-                extra_names.update(new_extra_names)
-            ast_args.append(new_arg)
-        ast_kwargs = []
-        for key, value in kwargs.items():
-            new_value, new_extra_names = self.__convert_to_ast(value)
-            if new_extra_names is not None:
-                extra_names.update(new_extra_names)
-            ast_kwargs.append(ast.keyword(key, new_value))
-        return self.__make_new(ast.Call(self.__get_ast(), ast_args, ast_kwargs), extra_names)
-
-    def __iter__(self):
-        yield self.__make_new(ast.Starred(self.__get_ast()))
-
-    def __repr__(self):
-        if isinstance(self.__ast_node__, str):
-            return self.__ast_node__
-        return ast.unparse(self.__ast_node__)
-
-    def __format__(self, format_spec):
-        raise TypeError("Cannot stringify annotation containing string formatting")
-
-    def _make_binop(op: ast.AST):
-        def binop(self, other):
-            rhs, extra_names = self.__convert_to_ast(other)
-            return self.__make_new(
-                ast.BinOp(self.__get_ast(), op, rhs), extra_names
-            )
-
-        return binop
-
-    __add__ = _make_binop(ast.Add())
-    __sub__ = _make_binop(ast.Sub())
-    __mul__ = _make_binop(ast.Mult())
-    __matmul__ = _make_binop(ast.MatMult())
-    __truediv__ = _make_binop(ast.Div())
-    __mod__ = _make_binop(ast.Mod())
-    __lshift__ = _make_binop(ast.LShift())
-    __rshift__ = _make_binop(ast.RShift())
-    __or__ = _make_binop(ast.BitOr())
-    __xor__ = _make_binop(ast.BitXor())
-    __and__ = _make_binop(ast.BitAnd())
-    __floordiv__ = _make_binop(ast.FloorDiv())
-    __pow__ = _make_binop(ast.Pow())
-
-    del _make_binop
-
-    def _make_rbinop(op: ast.AST):
-        def rbinop(self, other):
-            new_other, extra_names = self.__convert_to_ast(other)
-            return self.__make_new(
-                ast.BinOp(new_other, op, self.__get_ast()), extra_names
-            )
-
-        return rbinop
-
-    __radd__ = _make_rbinop(ast.Add())
-    __rsub__ = _make_rbinop(ast.Sub())
-    __rmul__ = _make_rbinop(ast.Mult())
-    __rmatmul__ = _make_rbinop(ast.MatMult())
-    __rtruediv__ = _make_rbinop(ast.Div())
-    __rmod__ = _make_rbinop(ast.Mod())
-    __rlshift__ = _make_rbinop(ast.LShift())
-    __rrshift__ = _make_rbinop(ast.RShift())
-    __ror__ = _make_rbinop(ast.BitOr())
-    __rxor__ = _make_rbinop(ast.BitXor())
-    __rand__ = _make_rbinop(ast.BitAnd())
-    __rfloordiv__ = _make_rbinop(ast.FloorDiv())
-    __rpow__ = _make_rbinop(ast.Pow())
-
-    del _make_rbinop
-
-    def _make_compare(op):
-        def compare(self, other):
-            rhs, extra_names = self.__convert_to_ast(other)
-            return self.__make_new(
-                ast.Compare(
-                    left=self.__get_ast(),
-                    ops=[op],
-                    comparators=[rhs],
-                ),
-                extra_names,
-            )
-
-        return compare
-
-    __lt__ = _make_compare(ast.Lt())
-    __le__ = _make_compare(ast.LtE())
-    __eq__ = _make_compare(ast.Eq())
-    __ne__ = _make_compare(ast.NotEq())
-    __gt__ = _make_compare(ast.Gt())
-    __ge__ = _make_compare(ast.GtE())
-
-    del _make_compare
-
-    def _make_unary_op(op):
-        def unary_op(self):
-            return self.__make_new(ast.UnaryOp(op, self.__get_ast()))
-
-        return unary_op
-
-    __invert__ = _make_unary_op(ast.Invert())
-    __pos__ = _make_unary_op(ast.UAdd())
-    __neg__ = _make_unary_op(ast.USub())
-
-    del _make_unary_op
-
-
-class _StringifierDict(dict):
-    def __init__(self, namespace, *, globals=None, owner=None, is_class=False, format):
-        super().__init__(namespace)
-        self.namespace = namespace
-        self.globals = globals
-        self.owner = owner
-        self.is_class = is_class
-        self.stringifiers = []
-        self.next_id = 1
-        self.format = format
-
-    def __missing__(self, key):
-        fwdref = _Stringifier(
-            key,
-            globals=self.globals,
-            owner=self.owner,
-            is_class=self.is_class,
-            stringifier_dict=self,
-        )
-        self.stringifiers.append(fwdref)
-        return fwdref
-
-    def transmogrify(self, cell_dict):
-        for obj in self.stringifiers:
-            obj.__class__ = ForwardRef
-            obj.__stringifier_dict__ = None  # not needed for ForwardRef
-            if isinstance(obj.__ast_node__, str):
-                obj.__arg__ = obj.__ast_node__
-                obj.__ast_node__ = None
-            if cell_dict is not None and obj.__cell__ is None:
-                obj.__cell__ = cell_dict
-
-    def create_unique_name(self):
-        name = f"__annotationlib_name_{self.next_id}__"
-        self.next_id += 1
-        return name
-
-
-# _build_closure is also vendored to use the new stringifier class
-def _build_closure(annotate, owner, is_class, stringifier_dict, *, allow_evaluation):
-    if not annotate.__closure__:
-        return None, None
-    new_closure = []
-    cell_dict = {}
-    for name, cell in zip(annotate.__code__.co_freevars, annotate.__closure__, strict=True):
-        cell_dict[name] = cell
-        new_cell = None
-        if allow_evaluation:
-            try:
-                cell.cell_contents
-            except ValueError:
-                pass
-            else:
-                new_cell = cell
-        if new_cell is None:
-            fwdref = _Stringifier(
-                name,
-                cell=cell,
-                owner=owner,
-                globals=annotate.__globals__,
-                is_class=is_class,
-                stringifier_dict=stringifier_dict,
-            )
-            stringifier_dict.stringifiers.append(fwdref)
-            new_cell = types.CellType(fwdref)
-        new_closure.append(new_cell)
-    return tuple(new_closure), cell_dict
-
-
-def call_annotate_function(annotate, format, *, owner=None, _is_evaluate=False):
+def call_annotate_deferred(annotate, *, owner=None, skip_globals_check=False, _is_evaluate=False):
     """
-    Extend annotationlib's `call_annotate_function` to support Format.DEFERRED
+    Call an annotate function in a way to retrieve deferred annotations
+
+    :param annotate: `__annotate__` function
+    :param owner: The object thaat owns the annotate function, if it exists
+    :param skip_globals_check: Skip the call to VALUE_WITH_FAKE_GLOBALS - assume it is supported
     """
-    if format != Format.DEFERRED:
-        return _annotationlib_call_annotate_function(annotate, format, owner=owner, _is_evaluate=_is_evaluate)
 
     try:
-        return annotate(format)
-    except NotImplementedError:
+        return annotate._deferred_annotations
+    except AttributeError:
         pass
 
-    # Handle the DEFERRED format
-    try:
-        # Used to cache value annotations for deferred if successful
-        value_annotations = annotate(Format.VALUE_WITH_FAKE_GLOBALS)
-    except NotImplementedError:
-        # Both STRING and VALUE_WITH_FAKE_GLOBALS are not implemented: fallback to VALUE
-        return {
-            k: DeferredAnnotation(v)
-            for k, v in annotate(Format.VALUE).items()
-        }
-    except Exception:
-        value_annotations = _sentinel
+    value_annotations = _sentinel
 
-    globals = _StringifierDict({}, format=format)
+    if not skip_globals_check:
+        # If the globals check is done, try to use the globals it returns to cache if successful
+        try:
+            # Used to cache value annotations for deferred if successful
+            value_annotations = annotate(Format.VALUE_WITH_FAKE_GLOBALS)
+        except NotImplementedError:
+            # Both STRING and VALUE_WITH_FAKE_GLOBALS are not implemented: fallback to VALUE
+            return {
+                k: DeferredAnnotation(v)
+                for k, v in annotate(Format.VALUE).items()
+            }
+        except Exception:
+            pass
+
+    # Deferred annotations are built on STRING annotations
+    globals = _StringifierDict({}, format=Format.STRING)
     is_class = isinstance(owner, type)
     closure, cell_dict = _build_closure(
         annotate, owner, is_class, globals, allow_evaluation=False
@@ -445,36 +112,27 @@ def call_annotate_function(annotate, format, *, owner=None, _is_evaluate=False):
         }
 
 
-def _get_and_call_annotate(obj, format):
-    # Copied from annotationlib.py
-    # This is necessary to call our annotate function that supports DEFERRED and not the original
-    annotate = getattr(obj, "__annotate__", None)
-    if annotate is not None:
-        ann = call_annotate_function(annotate, format, owner=obj)
-        if not isinstance(ann, dict):
-            raise ValueError(f"{obj!r}.__annotate__ returned a non-dict")
-        return ann
-    return None
-
-
-def get_annotations(obj, *, globals=None, locals=None, eval_str=False, format=Format.VALUE):
+def get_deferred_annotations(obj, *, skip_globals_check=False):
     """
     Extend annotationlib.get_annotations to handle `Format.DEFERRED`
     """
-    if format == Format.DEFERRED:
-        ann = _get_and_call_annotate(obj, format)
-        if ann is not None:
-            return dict(ann)
-        ann = _get_dunder_annotations(obj)
+    annotate = getattr(obj, "__annotate__", None)
 
-        if ann is not None:
-            return {k: DeferredAnnotation(v) for k, v in ann.items()}
-        elif isinstance(obj, type) or callable(obj):
-            return {}
+    if annotate is not None:
+        ann = call_annotate_deferred(annotate, owner=obj, skip_globals_check=skip_globals_check)
+        if not isinstance(ann, dict):
+            raise ValueError(f"{obj!r}.__annotate__ returned a non-dict")
+        return dict(ann)
 
-        raise TypeError(f"{obj!r} does not have annotations")
+    # Fallback, try `__annotations__`
+    ann = _get_dunder_annotations(obj)
 
-    return _annotationlib_get_annotations(obj, globals=globals, locals=locals, eval_str=eval_str, format=format)
+    if ann is not None:
+        return {k: DeferredAnnotation(v) for k, v in ann.items()}
+    elif isinstance(obj, type) or callable(obj):
+        return {}
+
+    raise TypeError(f"{obj!r} does not have annotations")
 
 
 # New classes and functions
@@ -608,18 +266,18 @@ class EvaluationContext:
         return result, True
 
 
-# This function would be added to `ForwardRef`, but this is not otherwise possible
-def get_forwardref_evaluation_context(self, globals=None, locals=None, type_params=None, owner=None):
+# This is needed to convert a ForwardRef to a DeferredAnnotation
+def get_forwardref_evaluation_context(ref, globals=None, locals=None, type_params=None, owner=None):
     # Get the globals and locals contexts for reference evaluation
     if owner is None:
-        owner = self.__owner__
+        owner = ref.__owner__
 
-    if globals is None and self.__forward_module__ is not None:
+    if globals is None and ref.__forward_module__ is not None:
         globals = getattr(
-            sys.modules.get(self.__forward_module__, None), "__dict__", None
+            sys.modules.get(ref.__forward_module__, None), "__dict__", None
         )
     if globals is None:
-        globals = self.__globals__
+        globals = ref.__globals__
     if globals is None:
         if isinstance(owner, type):
             module_name = getattr(owner, "__module__", None)
@@ -638,16 +296,16 @@ def get_forwardref_evaluation_context(self, globals=None, locals=None, type_para
 
     # Convert a single `cell` into a dict
     # The context may evaluate additional names
-    if isinstance(self.__cell__, types.CellType):
-        cells = {self.__forward_arg__: self.__cell__}
+    if isinstance(ref.__cell__, types.CellType):
+        cells = {ref.__forward_arg__: ref.__cell__}
     else:
-        cells = self.__cell__
+        cells = ref.__cell__
 
     return EvaluationContext(
         globals=globals,
         locals=locals,
         owner=owner,
-        is_class=self.__forward_is_class__,
+        is_class=ref.__forward_is_class__,
         cells=cells,
         type_params=type_params,
     )
@@ -678,6 +336,16 @@ class DeferredAnnotation:
 
         self._as_str = None
         self._resolved_value = resolved_value
+
+    @staticmethod
+    def from_typealias(alias, *, owner=None):
+        # Type aliases are not automatically converted
+        # Using from_typealias will make them convert.
+        return call_annotate_deferred(
+            alias.evaluate_value,
+            owner=owner,
+            _is_evaluate=True
+        )
 
     def __eq__(self, other):
         if not isinstance(other, DeferredAnnotation):
@@ -723,8 +391,6 @@ class DeferredAnnotation:
 
     def evaluate(self, format=Format.VALUE, extra_names=None):
         match format:
-            case Format.DEFERRED:
-                return self
             case Format.VALUE | Format.FORWARDREF:
                 if self._resolved_value is not _sentinel:
                     return self._resolved_value
@@ -777,20 +443,35 @@ class DeferredAnnotation:
                 raise NotImplementedError(format)
 
 
-def make_annotate_function(annos):
-    """Create a new __annotate__ function from deferred annotations"""
-    forward_annos = {
-        k: v if isinstance(v, DeferredAnnotation) else DeferredAnnotation(v)
-        for k, v in annos.items()
-    }
+class ReAnnotate:
+    """
+    Create a new `__annotate__` callable from existing annotations.
 
-    def __annotate__(format, /):
+    If the annotations are DeferredAnnotation objects, these are used directly.
+    Otherwise they will be converted
+    """
+    __slots__ = ("_deferred_annotations",)
+    def __init__(self, annotations):
+        new_annos = {}
+        for k, v in annotations.items():
+            if isinstance(v, DeferredAnnotation):
+                new_annos[k] = v
+            elif isinstance(v, _TypeAliasType):
+                new_annos[k] = DeferredAnnotation.from_typealias(v)
+            else:
+                new_annos[k] = DeferredAnnotation(v)
+
+        self._deferred_annotations = {
+            k: v if isinstance(v, DeferredAnnotation) else DeferredAnnotation(v)
+            for k, v in annotations.items()
+        }
+
+    def __call__(self, format, /):
         match format:
             case Format.VALUE | Format.FORWARDREF | Format.STRING:
-                return {k: v.evaluate(format=format) for k, v in forward_annos.items()}
-            case Format.DEFERRED:
-                return dict(forward_annos)
+                return {k: v.evaluate(format=format) for k, v in self._deferred_annotations.items()}
             case _:
                 raise NotImplementedError(format)
 
-    return __annotate__
+    def __repr__(self):
+        return f"{type(self).__name__}({self._deferred_annotations!r})"
