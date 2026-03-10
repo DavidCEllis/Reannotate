@@ -11,7 +11,7 @@ It also makes it easy to retrieve annotations and evaluate them individually.
 Unlike `Format.FORWARDREF`, `get_deferred_annotations` will always return `DeferredAnnotation` objects as the values
 of the annotations dictionary.
 
-## Retrieving annotations ##
+## Retrieving deferred annotations ##
 
 `get_deferred_annotations` is provided to retrieve deferred annotations from an annotated object:
 
@@ -48,7 +48,7 @@ list[ForwardRef('unknown', is_class=True, owner=<class '__main__.Example'>)]
 str | undefined
 ```
 
-If a value is defined at a later point, the annotation can be evaluated fully.
+If a value is defined at a later point, the annotation can then be evaluated fully.
 
 ```python
 unknown = float
@@ -92,8 +92,7 @@ print(call_annotate_function(new_annos, format=Format.FORWARDREF))
 With the new annotations in Python 3.14 it is no longer always possible to retrieve `__annotations__`.
 To correctly handle inserting a field into a dataclass it is necessary to create a new `__annotate__` function.
 
-`reannotate` provides `get_deferred_annotations` and `ReAnnotate` to help make this as easy as modifying
-`__annotations__` in earlier versions of Python.
+Using `get_deferred_annotations` and `ReAnnotate`, this is now as straight forward as it was prior to Python 3.14.
 
 ```python
 from annotationlib import get_annotations, Format
@@ -106,12 +105,12 @@ def debug_dataclass(cls):
     # Gets all annotations in an unevaluated format
     annos = get_deferred_annotations(cls)
 
+    # Standard objects can be provided and will be converted to `DeferredAnnotation` values
     annos |= {"_used_kwargs": dict[str, object]}
 
     # ReAnnotate instances are callables that replace the `__annotate__` function
     cls.__annotate__ = ReAnnotate(annos)
-
-    setattr(cls, "_used_kwargs", field(init=False, repr=False, compare=False))
+    cls._used_kwargs = field(init=False, repr=False, compare=False)
 
     new_cls = dataclass(cls, slots=True)
     dc_init = new_cls.__init__
