@@ -160,7 +160,7 @@ class TestDeferredFormat(unittest.TestCase):
             {k: v.evaluate() for k, v in deferred_annos.items()}
         )
 
-    def test_is_evaluated(self):
+    def test_is_resolved(self):
         # Check that the value is cached only when expected
         class Example:
             a: list[undefined]  # type: ignore
@@ -168,12 +168,12 @@ class TestDeferredFormat(unittest.TestCase):
         a_anno = get_deferred_annotations(Example)['a']
         a_anno.evaluate(format=Format.FORWARDREF)
 
-        self.assertFalse(a_anno.is_evaluated)
+        self.assertFalse(a_anno.is_resolved)
 
         undefined = str
         a_anno.evaluate(format=Format.FORWARDREF)
 
-        self.assertTrue(a_anno.is_evaluated)
+        self.assertTrue(a_anno.is_resolved)
 
     def test_always_deferred(self):
         # Check some types that had 'escaped' deferral initially

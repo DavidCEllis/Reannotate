@@ -253,7 +253,7 @@ class DeferredAnnotation:
         return f"{self.__class__.__name__}({self.as_str!r})"
 
     @property
-    def is_evaluated(self):
+    def is_resolved(self):
         return self._resolved_value is not _sentinel
 
     @property
