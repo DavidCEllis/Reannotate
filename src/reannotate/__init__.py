@@ -1,14 +1,11 @@
 """
-This module extends some parts of Python 3.14's `annotationlib`
+This module extends some parts of Python 3.14+ `annotationlib`
 
-It adds a new unofficial Format in order to make creating new annotate functions possible
-without having to rewrite complex internal logic to do so.
+This adds a way to extract annotations as `DeferredAnnotation` objects
+which can be individually evaluated at a later point.
 
-This adds support for a `Format.DEFERRED` option which allows annotations to be
-collected in deferred form for easy reconstruction into new `__annotate__` functions.
-
-Doing so requires reproducing some parts of `annotationlib` as doing so requires replacing
-some parts in the middle of `call_annotate_function`.
+It also includes a helper `ReAnnotate` class to be used to act as the new
+`__annotate__` callable on objects.
 """
 
 import ast
