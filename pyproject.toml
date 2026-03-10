@@ -46,8 +46,5 @@ testpaths = [
 [tool.coverage.report]
 # Exclude vendored code
 exclude_also = [
-    "class _Stringifier",
-    "class _StringifierDict",
-    "def _build_closure",
     "def __repr__",
 ]
