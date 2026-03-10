@@ -351,7 +351,7 @@ class ReAnnotate:
             for k, v in annotations.items()
         }
         try:
-            self._deferred_annotations = frozendict(new_annos)
+            self._deferred_annotations = frozendict(new_annos)  # type: ignore
         except NameError:
             self._deferred_annotations = new_annos
 
