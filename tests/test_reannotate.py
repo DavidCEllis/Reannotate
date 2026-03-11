@@ -6,6 +6,7 @@ from reannotate import DeferredAnnotation, call_annotate_deferred, get_deferred_
 
 
 class TestDeferredFormat(unittest.TestCase):
+    # Test direct features of DeferredAnnotation
 
     def test_create_from_type(self):
         # Create a DeferredAnnotation from already evaluated types
@@ -108,6 +109,11 @@ class TestDeferredFormat(unittest.TestCase):
         self.assertEqual(repr(attrib_anno), repr(string_anno))
         self.assertEqual(repr(attrib_anno), repr(ref_anno))
 
+
+
+class TestGetDeferredAnnotations(unittest.TestCase):
+    # Test features of annotations returned from get_deferred_annotations
+
     def test_evaluate_attribute_error(self):
         # test evaluating an annotation that would raise
         # an AttributeError
@@ -206,7 +212,7 @@ class TestDeferredFormat(unittest.TestCase):
         )
 
 
-class TestMakeAnnotateFunction(unittest.TestCase):
+class TestReAnnotateClass(unittest.TestCase):
     def test_remade_annotation(self):
         def f(a: int) -> str: ...
 
