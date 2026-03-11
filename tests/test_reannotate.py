@@ -73,7 +73,7 @@ class TestDeferredFormat(unittest.TestCase):
         anno = DeferredAnnotation(str)
 
         with self.assertRaises(NotImplementedError):
-            anno.evaluate(format=Format.VALUE_WITH_FAKE_GLOBALS)
+            anno.evaluate(format=Format.VALUE_WITH_FAKE_GLOBALS)  # type: ignore
 
     def test_eq(self):
         # Basic
@@ -189,7 +189,7 @@ class TestGetDeferredAnnotations(unittest.TestCase):
             c: [str, int]  # type: ignore
             d: {list: float}  # type: ignore
             e: (str, int)  # type: ignore
-            f: typing.attribute_error
+            f: typing.attribute_error  # type: ignore
 
         annos = get_deferred_annotations(Example)
 
@@ -214,7 +214,7 @@ class TestGetDeferredAnnotations(unittest.TestCase):
 
 class TestReAnnotateClass(unittest.TestCase):
     def test_remade_annotation(self):
-        def f(a: int) -> str: ...
+        def f(a: int) -> str: ...  # type: ignore
 
         def_annos = get_deferred_annotations(f)
         new_annotate = ReAnnotate(def_annos)
@@ -225,7 +225,7 @@ class TestReAnnotateClass(unittest.TestCase):
             with self.subTest(format=fmt):
                 self.assertEqual(
                     get_annotations(f, format=fmt),
-                    call_annotate_function(new_annotate, format=fmt)
+                    call_annotate_function(new_annotate, format=fmt)  # type: ignore
                 )
 
     def test_forwardref_annotation(self):
@@ -241,7 +241,7 @@ class TestReAnnotateClass(unittest.TestCase):
                 continue
             with self.subTest(format=fmt):
                 direct_annos = get_annotations(f, format=fmt)
-                remade_annos = call_annotate_function(new_annotate, format=fmt)
+                remade_annos = call_annotate_function(new_annotate, format=fmt)  # type: ignore
 
                 if fmt == Format.FORWARDREF:
                     # cell adjustment
@@ -257,14 +257,14 @@ class TestReAnnotateClass(unittest.TestCase):
             with self.subTest(format=f"Retest {fmt}"):
                 self.assertEqual(
                     get_annotations(f, format=fmt),
-                    call_annotate_function(new_annotate, format=fmt)
+                    call_annotate_function(new_annotate, format=fmt)  # type: ignore
                 )
 
     def test_fakeglobals_raises(self):
-        def f(a: int) -> str: ...
+        def f(a: int) -> str: ...  # type: ignore
 
         def_annos = get_deferred_annotations(f)
         new_annotate = ReAnnotate(def_annos)
 
         with self.assertRaises(NotImplementedError):
-            new_annotate(Format.VALUE_WITH_FAKE_GLOBALS)
+            new_annotate(Format.VALUE_WITH_FAKE_GLOBALS)  # type: ignore

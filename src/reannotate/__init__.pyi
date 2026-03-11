@@ -51,7 +51,7 @@ class DeferredAnnotation:
     def __repr__(self) -> str: ...
 
     @property
-    def is_evaluated(self) -> bool: ...
+    def is_resolved(self) -> bool: ...
 
     @property
     def as_str(self) -> str: ...
@@ -69,7 +69,7 @@ class DeferredAnnotation:
     @t.overload
     def evaluate(
         self,
-        format: t.Literal[Format.VALUE, Format.FORWARDREF],
+        format: t.Literal[Format.VALUE, Format.FORWARDREF] = ...,
         extra_names: dict[str, t.Any] | None = ...
     ) -> t.Any: ...
 
@@ -79,6 +79,8 @@ class ReAnnotate:
 
     # In 3.14 this is a dict, in 3.15+ it is a frozendict
     _deferred_annotations: Mapping[str, DeferredAnnotation]
+
+    def __init__(self, annotations: dict[str, t.Any]) -> None: ...
 
     @property
     def deferred_annotations(self) -> dict[str, DeferredAnnotation]: ...

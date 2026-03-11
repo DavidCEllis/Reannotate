@@ -48,3 +48,6 @@ testpaths = [
 exclude_also = [
     "def __repr__",
 ]
+
+[tool.ty.rules]
+unused-type-ignore-comment = "ignore"  # Not all type ignore comments are for ty
