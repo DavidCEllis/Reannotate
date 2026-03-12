@@ -83,7 +83,7 @@ class TestDeferredFormat(unittest.TestCase):
         self.assertEqual(anno, eq_anno)
 
         # From Annotations
-        def f(x: str, y: undefined): ...  # type: ignore # noqa: F821
+        def f(x: str, y: undefined): ...  # type: ignore
 
         annos = get_deferred_annotations(f)
         eq_annos = get_deferred_annotations(f)
@@ -201,7 +201,7 @@ class TestGetDeferredAnnotations(unittest.TestCase):
 
         class Example:
             a: list[...]  # type: ignore
-            b: undefined  # Prevent caching from VALUE_WITH_FAKE_GLOBALS  # type: ignore  # noqa: F821
+            b: undefined  # Prevent caching from VALUE_WITH_FAKE_GLOBALS  # type: ignore
 
         annos = get_deferred_annotations(Example)
 
@@ -216,7 +216,7 @@ class TestCallAnnotateFunction(unittest.TestCase):
         # Check that call_annotate_deferred matches get_annotations on classes
         class Example:
             a: int
-            b: undefined  # type: ignore  # noqa: F821
+            b: undefined  # type: ignore
 
         annotate = get_annotate_from_class_namespace(Example.__dict__)
         annos = call_annotate_deferred(annotate, owner=Example)
