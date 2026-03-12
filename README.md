@@ -85,6 +85,36 @@ print(call_annotate_function(new_annos, format=Format.FORWARDREF))
 {'a': <class 'int'>, 'b': list[ForwardRef('undefined', is_class=True, owner=<class '__main__.Example'>)]}
 ```
 
+## How does this differ from `Format.FORWARDREF` ##
+
+### Resolution ###
+
+The `FORWARDREF` format always attempts to resolve annotations at runtime as far as possible, this means
+that the `ForwardRef` objects can be contained inside other objects and made more difficult to resolve.
+This resolution makes them unsuitable to use to generate new `__annotate__` callables.
+
+```python
+from annotationlib import get_annotations, Format
+from reannotate import get_deferred_annotations
+
+class Example:
+    a: list[ref]
+
+print(get_annotations(Example, format=Format.FORWARDREF)['a'])
+print(get_deferred_annotations(Example)['a'])
+```
+
+```python
+list[ForwardRef('ref', is_class=True, owner=<class '__main__.Example'>)]
+DeferredAnnotation('list[ref]')
+```
+
+In this case if `ref` is defined later, the `DeferredAnnotation` can be resolved using `.evaluate()`, but resolving the
+annotation from the `ForwardRef` format requires evaluating the reference inside the `GenericAlias` for `list`.
+
+`DeferredAnnotation` also keeps the full string for the annotation and as such can be used to generate new
+`STRING` format annotations.
+
 ## Use case examples ##
 
 ### Adding fields automatically to a dataclass ###
