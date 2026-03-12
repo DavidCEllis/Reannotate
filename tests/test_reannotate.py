@@ -134,6 +134,9 @@ class TestEvaluationContext(unittest.TestCase):
 
         self.assertEqual(a_anno.evaluation_context, a_anno_copy.evaluation_context)
 
+        # Type narrowing
+        assert a_anno_copy.evaluation_context is not None
+
         # Remove cells from one
         a_anno_copy.evaluation_context._cells = None
 

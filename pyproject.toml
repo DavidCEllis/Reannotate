@@ -58,4 +58,5 @@ unused-type-ignore-comment = "ignore"  # Not all type ignore comments are for ty
 
 [tool.ruff.lint.per-file-ignores]
 # Ignore undefined names in test files - these are used for ForwardRef checks
+"src/*.py" = ["F811"]  # Ruff doesn't recognise fake overloads as overloads
 "tests/*.py" = ["F821"]

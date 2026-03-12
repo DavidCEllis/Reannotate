@@ -7,10 +7,11 @@ which can be individually evaluated at a later point.
 It also includes a helper `ReAnnotate` class to be used to act as the new
 `__annotate__` callable on objects.
 """
-__lazy_modules__ = ["reannotate._version"]
+__lazy_modules__ = ["reannotate._version", "collections.abc", "typing"]
 
 import ast
 import builtins
+import sys
 import types
 
 # This requires the use of some private functions and classes from annotationlib
@@ -30,6 +31,38 @@ from ._version import (
     __version__ as __version__,
     __version_tuple__ as __version_tuple__
 )
+
+# I want this to be well typed, but I **really** don't want to waste time
+# importing modules purely for typing at runtime
+TYPE_CHECKING = False
+if sys.version_info >= (3, 15):
+    from collections.abc import Callable as Callable, Mapping as Mapping
+    import typing as t
+else:
+    # Hacks for imports prior to Python 3.15
+    from _collections_abc import Callable as Callable, Mapping as Mapping
+    if TYPE_CHECKING:
+        import typing as t
+    else:
+        # Hack lazy import for 3.14
+        t = sys.modules.get("typing")
+        if t is None:  # pragma: no cover
+            class _LazyTyping:
+                def __getattr__(self, name):
+                    global t
+                    import typing
+                    t = typing
+                    return getattr(t, name)
+            t = _LazyTyping()
+            del _LazyTyping
+
+if TYPE_CHECKING:
+    from typing import overload as _overload
+else:
+    # Unlike the real overload, this does not register functions
+    # Just return None so the function is unusable
+    def _overload(func):
+        return None
 
 
 class _Sentinel:
@@ -57,15 +90,22 @@ class EvaluationContext:
         "_type_params",
     )
 
+    globals: dict[str, t.Any]
+    _locals: Mapping[str, t.Any] | None
+    _owner: object
+    _is_class: bool
+    _cells: Mapping[str, t.Any] | None
+    _type_params: tuple[t.TypeVar | t.ParamSpec | t.TypeVarTuple, ...] | None
+
     def __init__(
         self,
         *,
-        globals,
-        locals=None,
-        owner=None,
-        is_class=False,
-        cells=None,
-        type_params=None,
+        globals: dict[str, t.Any],
+        locals: Mapping[str, t.Any] | None = None,
+        owner: object = None,
+        is_class: bool = False,
+        cells: Mapping[str, t.Any] | None = None,
+        type_params: tuple[t.TypeVar | t.ParamSpec | t.TypeVarTuple, ...] | None = None,
     ):
         self.globals = globals
         self._locals = locals
@@ -74,7 +114,7 @@ class EvaluationContext:
         self._cells = cells
         self._type_params = type_params
 
-    def _compare_cells(self, other):
+    def _compare_cells(self, other: EvaluationContext) -> bool:
         # Needed for `__eq__`
         if self._cells is other._cells:
             return True
@@ -88,7 +128,7 @@ class EvaluationContext:
         )
         # fmt: on
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         if not isinstance(other, EvaluationContext):
             return NotImplemented
 
@@ -104,7 +144,7 @@ class EvaluationContext:
         )
 
     @property
-    def locals(self):
+    def locals(self) -> dict[str, t.Any]:
         if self._locals is None:
             locals = {}
             if isinstance(self._owner, type):
@@ -136,9 +176,14 @@ class EvaluationContext:
                     locals.setdefault(cell_name, cell_value)
         return locals
 
-    def evaluate(self, obj, use_forwardref=False, extra_names=None):
+    def evaluate(
+        self,
+        obj: object,
+        use_forwardref: bool = False,
+        extra_names: dict[str, t.Any] | None = None
+    ):
         # returns the evaluated value and a boolean to indicate if ForwardRef was required
-        if isinstance(obj, ast.AST):
+        if isinstance(obj, ast.expr):
             expr = ast.fix_missing_locations(ast.Expression(body=obj))
             code = compile(expr, "<annotate>", "eval")
         elif isinstance(obj, str):
@@ -195,14 +240,25 @@ class DeferredAnnotation:
 
     __slots__ = ("_obj", "_evaluation_context", "_as_str", "_resolved_value")
 
-    def __init__(self, obj, *, evaluation_context=None, resolved_value=_sentinel):
+    _obj: object
+    _evaluation_context: EvaluationContext | None
+    _as_str: str | None
+    _resolved_value: _Sentinel | t.Any
+
+    def __init__(
+        self,
+        obj: object,
+        *,
+        evaluation_context: EvaluationContext | None = None,
+        resolved_value: _Sentinel | t.Any = _sentinel
+    ):
         self._obj = obj
         self._evaluation_context = evaluation_context
 
         self._as_str = None
         self._resolved_value = resolved_value
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         if not isinstance(other, DeferredAnnotation):
             return NotImplemented
 
@@ -216,15 +272,15 @@ class DeferredAnnotation:
             and self.evaluation_context == other.evaluation_context
         )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self.as_str!r})"
 
     @property
-    def is_resolved(self):
+    def is_resolved(self) -> bool:
         return self._resolved_value is not _sentinel
 
     @property
-    def as_str(self):
+    def as_str(self) -> str:
         if self._as_str is None:
             if isinstance(self._obj, str):
                 self._as_str = self._obj
@@ -237,8 +293,22 @@ class DeferredAnnotation:
         return self._as_str
 
     @property
-    def evaluation_context(self):
+    def evaluation_context(self) -> EvaluationContext | None:
         return self._evaluation_context
+
+    @_overload
+    def evaluate(
+        self,
+        format: t.Literal[Format.STRING],
+        extra_names: dict[str, t.Any] | None = ...
+    ) -> str: ...
+
+    @_overload
+    def evaluate(
+        self,
+        format: t.Literal[Format.VALUE, Format.FORWARDREF] = ...,
+        extra_names: dict[str, t.Any] | None = ...
+    ) -> t.Any: ...
 
     def evaluate(self, format=Format.VALUE, extra_names=None):
         match format:
@@ -319,7 +389,9 @@ class ReAnnotate:
 
     __slots__ = ("_deferred_annotations",)
 
-    def __init__(self, annotations):
+    _deferred_annotations: Mapping[str, DeferredAnnotation]
+
+    def __init__(self, annotations: dict[str, t.Any]):
         new_annos = {
             k: v if isinstance(v, DeferredAnnotation) else DeferredAnnotation(v)
             for k, v in annotations.items()
@@ -330,8 +402,17 @@ class ReAnnotate:
             self._deferred_annotations = new_annos
 
     @property
-    def deferred_annotations(self):
+    def deferred_annotations(self) -> dict[str, DeferredAnnotation]:
         return dict(self._deferred_annotations)
+
+    @_overload
+    def __call__(self, format: t.Literal[Format.STRING]) -> dict[str, str]: ...
+
+    @_overload
+    def __call__(self, format: t.Literal[Format.VALUE, Format.FORWARDREF]) -> dict[str, t.Any]: ...
+
+    @_overload
+    def __call__(self, format: Format) -> dict[str, t.Any]: ...
 
     def __call__(self, format, /):
         match format:
@@ -343,16 +424,34 @@ class ReAnnotate:
             case _:
                 raise NotImplementedError(format)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"{type(self).__name__}({self.deferred_annotations!r})"
 
+
+@_overload
+def call_annotate_deferred(
+    annotate: Callable[[Format], dict[str, t.Any]],
+    *,
+    owner: object = ...,
+    skip_globals_check: bool = ...,
+    _is_evaluate: t.Literal[True],
+) -> DeferredAnnotation: ...
+
+@_overload
+def call_annotate_deferred(
+    annotate: Callable[[Format], dict[str, t.Any]],
+    *,
+    owner: object = ...,
+    skip_globals_check: bool = ...,
+    _is_evaluate: t.Literal[False] = ...,
+) -> dict[str, DeferredAnnotation]: ...
 
 def call_annotate_deferred(
     annotate,
     *,
-    owner=None,
-    skip_globals_check=False,
-    _is_evaluate=False,
+    owner = None,
+    skip_globals_check = False,
+    _is_evaluate = False,
 ):
     """
     Call an annotate function in a way to retrieve deferred annotations.
@@ -371,7 +470,7 @@ def call_annotate_deferred(
     """
 
     try:
-        return annotate.deferred_annotations
+        return annotate.deferred_annotations  # type: ignore
     except AttributeError:
         pass
 
@@ -449,7 +548,12 @@ def call_annotate_deferred(
         }
 
 
-def call_evaluate_deferred(evaluate, *, owner=None, skip_globals_check=False):
+def call_evaluate_deferred(
+    evaluate: Callable[[Format], t.Any],
+    *,
+    owner: object = None,
+    skip_globals_check: bool = False
+) -> DeferredAnnotation:
     return call_annotate_deferred(
         evaluate,
         owner=owner,
@@ -458,7 +562,11 @@ def call_evaluate_deferred(evaluate, *, owner=None, skip_globals_check=False):
     )
 
 
-def get_deferred_annotations(obj, *, skip_globals_check=False):
+def get_deferred_annotations(
+    obj: t.Any,
+    *,
+    skip_globals_check: bool = False
+) -> dict[str, DeferredAnnotation]:
     """
     Extend annotationlib.get_annotations to handle `Format.DEFERRED`
     """
