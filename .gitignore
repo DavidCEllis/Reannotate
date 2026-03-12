@@ -73,3 +73,6 @@ docs/_build/
 
 # version file
 _version.py
+
+# Coverage
+cov.xml
