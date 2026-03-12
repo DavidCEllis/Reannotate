@@ -8,8 +8,7 @@ the `__annotations__` dictionary in earlier versions of Python.
 
 It also makes it easy to retrieve annotations and evaluate them individually.
 
-Unlike `Format.FORWARDREF`, `get_deferred_annotations` will always return `DeferredAnnotation` objects as the values
-of the annotations dictionary.
+Unlike `Format.FORWARDREF`, `get_deferred_annotations` will always return `DeferredAnnotation` objects as the values of the annotations dictionary.
 
 ## Retrieving deferred annotations ##
 
@@ -197,7 +196,7 @@ print(annos['b'].is_resolved)  # False
 `call_annotate_deferred` is provided to retrieve deferred annotations in the same way that
 `call_annotate_function` is used to retrieve standard annotations.
 
-### __future__ annotations ###
+### `__future__` annotations ###
 
 Deferred annotations are intended to act like regular annotations when called with the standard
 annotation evaluation methods in order to create new `__annotate__` functions that behave like
@@ -233,6 +232,5 @@ PEP 649/749 annotations.
 You can read [this discourse thread](https://discuss.python.org/t/add-a-format-deferred-option-for-pep-649-749-annotations/104001)
 for the origins of this. Ideally I would like to get this functionality from `annotationlib` itself
 but there didn't seem to be much interest in the thread.
-I'm hopeful that as more people start using the new annotations
-format they recognise this hole in the functionality and we can get this into the stdlib in some form.
+I'm hopeful that as more people start using the new annotations format they recognise this hole in the functionality and we can get this into the stdlib in some form.
 In the meantime this can act as a kind of backport.
