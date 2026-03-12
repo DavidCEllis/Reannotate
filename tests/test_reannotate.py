@@ -216,7 +216,7 @@ class TestCallAnnotateFunction(unittest.TestCase):
         # Check that call_annotate_deferred matches get_annotations on classes
         class Example:
             a: int
-            b: undefined  # type: ignore
+            b: undefined  # type: ignore  # noqa: F821
 
         annotate = get_annotate_from_class_namespace(Example.__dict__)
         annos = call_annotate_deferred(annotate, owner=Example)
