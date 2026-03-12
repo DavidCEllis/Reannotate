@@ -177,7 +177,7 @@ If `__future__` annotations are used, `get_deferred_annotations` will still get 
 objects, but all formats will evaluate to strings, as they do for `__future__` annotations with
 `annotationlib.get_annotations`.
 
-## Type Aliases ##
+### Type Aliases ###
 
 Like `get_annotations`, type aliases inside `DeferredAnnotation` objects will not be evaluated.
 
