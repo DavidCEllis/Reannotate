@@ -476,7 +476,7 @@ def call_annotate_deferred(
                 resolved_value=(
                     value_annotations[key]
                     if value_annotations is not _sentinel
-                    else _sentinel,  # type: ignore
+                    else _sentinel  # type: ignore
                 ),
             )
             for key, val in annos.items()
