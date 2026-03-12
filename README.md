@@ -232,6 +232,7 @@ PEP 649/749 annotations.
 
 You can read [this discourse thread](https://discuss.python.org/t/add-a-format-deferred-option-for-pep-649-749-annotations/104001)
 for the origins of this. Ideally I would like to get this functionality from `annotationlib` itself
-but there didn't seem to be much interest. I'm hopeful that as more people start using the new annotations
-format they recognise this hole in the functionality and we can get this into the STDLIB in some form.
+but there didn't seem to be much interest in the thread.
+I'm hopeful that as more people start using the new annotations
+format they recognise this hole in the functionality and we can get this into the stdlib in some form.
 In the meantime this can act as a kind of backport.
