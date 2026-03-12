@@ -221,3 +221,17 @@ def f(v: Vector): ...
 v_anno = get_deferred_annotations(f)['v']
 print(v_anno.evaluate())  # Vector
 ```
+
+## Why does the project folder include the PSF License ##
+
+While not required for projects using Python, in order to implement deferred annotations, some logic
+is copied and modified from the standard library `annotationlib.py` module. This originally started
+as a fork of CPython that modified `annotationlib.py` to add deferred annotations as a format.
+This was split off in order for me to be able to use it in existing Python versions that have
+PEP 649/749 annotations.
+
+You can read [this discourse thread](https://discuss.python.org/t/add-a-format-deferred-option-for-pep-649-749-annotations/104001)
+for the origins of this. Ideally I would like to get this functionality from `annotationlib` itself
+but there didn't seem to be much interest. I'm hopeful that as more people start using the new annotations
+format they recognise this hole in the functionality and we can get this into the STDLIB in some form.
+In the meantime this can act as a kind of backport.
