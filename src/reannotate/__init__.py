@@ -11,7 +11,6 @@ It also includes a helper `ReAnnotate` class to be used to act as the new
 import ast
 import builtins
 import types
-import sys
 
 # This requires the use of some private functions and classes from annotationlib
 # The alternative would be vendoring their implementations.
@@ -36,7 +35,6 @@ class _Sentinel:
 _sentinel = _Sentinel()
 
 
-# New classes and functions
 class EvaluationContext:
     # This class handles creating a "locals" dictionary for the evaluation
     # of annotations.
@@ -171,57 +169,6 @@ class EvaluationContext:
         return result, True
 
 
-# This is needed to convert a ForwardRef to a DeferredAnnotation
-def _get_forwardref_evaluation_context(
-    ref,
-    globals=None,
-    locals=None,
-    type_params=None,
-    owner=None,
-):
-    # Get the globals and locals contexts for reference evaluation
-    if owner is None:
-        owner = ref.__owner__
-
-    if globals is None and ref.__forward_module__ is not None:
-        globals = getattr(
-            sys.modules.get(ref.__forward_module__, None), "__dict__", None
-        )
-    if globals is None:
-        globals = ref.__globals__
-    if globals is None:
-        if isinstance(owner, type):
-            module_name = getattr(owner, "__module__", None)
-            if module_name:
-                module = sys.modules.get(module_name, None)
-                if module:
-                    globals = getattr(module, "__dict__", None)
-        elif isinstance(owner, types.ModuleType):
-            globals = getattr(owner, "__dict__", None)
-        elif callable(owner):
-            globals = getattr(owner, "__globals__", None)
-
-    # If we pass None to eval() below, the globals of this module are used.
-    if globals is None:
-        globals = {}
-
-    # Convert a single `cell` into a dict
-    # The context may evaluate additional names
-    if isinstance(ref.__cell__, types.CellType):
-        cells = {ref.__forward_arg__: ref.__cell__}
-    else:
-        cells = ref.__cell__
-
-    return EvaluationContext(
-        globals=globals,
-        locals=locals,
-        owner=owner,
-        is_class=ref.__forward_is_class__,
-        cells=cells,
-        type_params=type_params,
-    )
-
-
 class DeferredAnnotation:
     """
     This exists to handle evaluating objects that have already been evaluated
@@ -285,10 +232,6 @@ class DeferredAnnotation:
 
     @property
     def evaluation_context(self):
-        if self._evaluation_context is None:
-            if isinstance(self._obj, ForwardRef):
-                self._evaluation_context = _get_forwardref_evaluation_context(self._obj)
-
         return self._evaluation_context
 
     def evaluate(self, format=Format.VALUE, extra_names=None):
@@ -297,10 +240,20 @@ class DeferredAnnotation:
                 if self._resolved_value is not _sentinel:
                     return self._resolved_value
 
-                if isinstance(self._obj, ForwardRef):
-                    return self._obj.evaluate(format=format)
-
+                # Forward references don't have an evaluation context
+                # As such they need to be handled separately
                 use_forwardref = format == Format.FORWARDREF
+                if isinstance(self._obj, ForwardRef):
+                    try:
+                        result = self._obj.evaluate(format=Format.VALUE)
+                    except Exception:
+                        if not use_forwardref:
+                            raise
+                        result = self._obj.evaluate(format=Format.FORWARDREF)
+                    else:
+                        self._resolved_value = result
+
+                    return result
 
                 # fmt: off
                 if (
@@ -419,17 +372,17 @@ def call_annotate_deferred(
     value_annotations = _sentinel
 
     if not skip_globals_check:
-        # If the globals check is done, try to use the globals it returns to cache if successful
         try:
             # Used to cache value annotations for deferred if successful
             value_annotations = annotate(Format.VALUE_WITH_FAKE_GLOBALS)
         except NotImplementedError:
-            # Both STRING and VALUE_WITH_FAKE_GLOBALS are not implemented: fallback to VALUE
+            # Deferred annotations and VALUE_WITH_FAKE_GLOBALS are not supported: fallback to VALUE
             return {k: DeferredAnnotation(v) for k, v in annotate(Format.VALUE).items()}
         except Exception:
             pass
 
-    # Deferred annotations are built on STRING annotations
+    # Logic taken from call_annotate_function in annotationlib.py
+    # Modified from the logic for STRING annotations
     globals = _StringifierDict({}, format=Format.STRING)
     is_class = isinstance(owner, type)
     closure, cell_dict = _build_closure(
