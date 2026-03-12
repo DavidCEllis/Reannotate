@@ -7,6 +7,7 @@ which can be individually evaluated at a later point.
 It also includes a helper `ReAnnotate` class to be used to act as the new
 `__annotate__` callable on objects.
 """
+__lazy_modules__ = ["reannotate._version"]
 
 import ast
 import builtins
@@ -23,6 +24,11 @@ from annotationlib import (
     Format,
     ForwardRef,
     type_repr,
+)
+
+from ._version import (
+    __version__ as __version__,
+    __version_tuple__ as __version_tuple__
 )
 
 
@@ -418,6 +424,13 @@ def call_annotate_deferred(
     else:
         # The only instance of _Sentinel that value_annotations can be is _sentinel
         # Type checkers don't necessarily understand this so ignore them here
+        if not isinstance(annos, dict):
+            if owner:
+                errmsg = f"{owner!r}.__annotate__ returned a non-dict"
+            else:
+                errmsg = f"{annotate!r} returned a non-dict"
+            raise TypeError(errmsg)
+
         return {
             key: DeferredAnnotation(
                 (
@@ -457,8 +470,6 @@ def get_deferred_annotations(obj, *, skip_globals_check=False):
             owner=obj,
             skip_globals_check=skip_globals_check,
         )
-        if not isinstance(ann, dict):
-            raise ValueError(f"{obj!r}.__annotate__ returned a non-dict")
         # call_annotate_deferred will always return a new dict
         return ann
 

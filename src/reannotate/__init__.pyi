@@ -12,6 +12,11 @@ class EvaluationContext:
     __slots__: tuple[str] = ...
 
     globals: dict[str, t.Any]
+    _locals: Mapping[str, t.Any] | None
+    _owner: object
+    _is_class: bool
+    _cells: Mapping[str, t.Any] | None
+    _type_params: tuple[t.TypeVar | t.ParamSpec | t.TypeVarTuple, ...] | None
 
     def __init__(
         self,
@@ -20,7 +25,7 @@ class EvaluationContext:
         locals: Mapping[str, t.Any] | None = ...,
         owner: object = ...,
         is_class: bool = ...,
-        cells: t.Any = ...,  # Need to investigate possible types
+        cells: Mapping[str, t.Any] | None = ...,  # Need to investigate possible types
         type_params: tuple[t.TypeVar | t.ParamSpec | t.TypeVarTuple, ...] | None = ...,
     ) -> None: ...
 
@@ -39,6 +44,11 @@ class EvaluationContext:
 
 class DeferredAnnotation:
     __slots__: tuple[str] = ...
+
+    _obj: object
+    _evaluation_context: EvaluationContext | None
+    _as_str: str | None
+    _resolved_value: _Sentinel | t.Any
 
     def __init__(
         self,
@@ -90,6 +100,9 @@ class ReAnnotate:
 
     @t.overload
     def __call__(self, format: t.Literal[Format.VALUE, Format.FORWARDREF]) -> dict[str, t.Any]: ...
+
+    @t.overload
+    def __call__(self, format: Format) -> dict[str, t.Any]: ...
 
 
 def call_annotate_deferred(

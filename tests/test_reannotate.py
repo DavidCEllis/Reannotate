@@ -2,10 +2,17 @@ import typing
 import unittest
 
 from annotationlib import ForwardRef, Format, call_annotate_function, get_annotations, get_annotate_from_class_namespace
-from reannotate import DeferredAnnotation, call_annotate_deferred, get_deferred_annotations, ReAnnotate
+from reannotate import (
+    DeferredAnnotation,
+    EvaluationContext,
+    ReAnnotate,
+    call_annotate_deferred,
+    call_evaluate_deferred,
+    get_deferred_annotations,
+)
 
 
-class TestDeferredFormat(unittest.TestCase):
+class TestDeferredAnnotationClass(unittest.TestCase):
     # Test direct features of DeferredAnnotation
 
     def test_create_from_type(self):
@@ -110,6 +117,46 @@ class TestDeferredFormat(unittest.TestCase):
         self.assertEqual(repr(attrib_anno), repr(ref_anno))
 
 
+class TestEvaluationContext(unittest.TestCase):
+    # Most of the evaluation context features are tested through other classes
+    # This tests the remaining parts directly
+    def test_none_cells_fails_eq(self):
+        # If one 'cells' attribute is None fail the evaluation
+        # even if all others match
+        class Example:
+            a: int
+
+        a_anno = get_deferred_annotations(Example)['a']
+        a_anno_copy = get_deferred_annotations(Example)['a']
+
+        # This is not the test, this is just to make sure the test is valid
+        assert a_anno.evaluation_context is not a_anno_copy.evaluation_context
+
+        self.assertEqual(a_anno.evaluation_context, a_anno_copy.evaluation_context)
+
+        # Remove cells from one
+        a_anno_copy.evaluation_context._cells = None
+
+        self.assertNotEqual(a_anno.evaluation_context, a_anno_copy.evaluation_context)
+
+    def test_not_implemented_eq(self):
+        def f(a: int): ...
+
+        ctx = get_deferred_annotations(f)['a'].evaluation_context
+        self.assertNotEqual(ctx, object())
+
+    def test_ctx_evaluate_raises(self):
+        ctx = EvaluationContext(globals={})
+        with self.assertRaises(TypeError):
+            ctx.evaluate(object())
+
+    def test_evaluate_extra_name(self):
+        ctx = EvaluationContext(globals={})
+        result = ctx.evaluate("typing_any", extra_names={"typing_any": typing.Any})
+
+        self.assertEqual(result[0], typing.Any)
+
+
 class TestGetDeferredAnnotations(unittest.TestCase):
     # Test features of annotations returned from get_deferred_annotations
 
@@ -210,6 +257,73 @@ class TestGetDeferredAnnotations(unittest.TestCase):
             annos['a'].evaluate()
         )
 
+    def test_type_parameter(self):
+        class Example[T]:
+            a: T
+
+        # If the globals check is used, a is evaluated early and cached
+        annos = get_deferred_annotations(Example, skip_globals_check=True)
+
+        self.assertEqual(annos['a'].evaluate(), Example.__type_params__[0])
+
+    def test_fake_future_annotations(self):
+        # Test a class with "faked" __future__ annotations
+        class Example:
+            a: int
+            b: str
+
+        Example.__annotations__ = {'a': 'int', 'b': 'str'}
+
+        annos = get_deferred_annotations(Example)
+
+        self.assertEqual(annos['a'].evaluate(), 'int')
+        self.assertEqual(annos['b'].evaluate(), 'str')
+
+    def test_objects_with_no_annotations(self):
+        annos = get_deferred_annotations(object)
+        self.assertEqual(annos, {})
+
+        annos = get_deferred_annotations(print)
+        self.assertEqual(annos, {})
+
+    def test_no_annotations_raises(self):
+        obj = object()
+        with self.assertRaises(TypeError):
+            get_deferred_annotations(obj)
+
+    def test_annotate_nondict(self):
+        def f(): pass
+
+        def fail_func(format, /):
+            return None
+
+        f.__annotate__ = fail_func
+
+        with self.assertRaises(TypeError):
+            get_deferred_annotations(f)
+
+        with self.assertRaises(TypeError):
+            call_annotate_deferred(fail_func)
+
+    def test_only_value_supported(self):
+        class Example:
+            a: int
+            b: str
+
+        def annotate(fmt, /):
+            match fmt:
+                case Format.VALUE:
+                    return {'a': int, 'b': str}
+                case _:
+                    raise NotImplementedError(fmt)
+
+        Example.__annotate__ = annotate
+
+        annos = get_deferred_annotations(Example)
+
+        self.assertEqual(annos['a'].evaluate(), int)
+        self.assertEqual(annos['a'].evaluate(format=Format.STRING), 'int')
+
 
 class TestCallAnnotateFunction(unittest.TestCase):
     def test_call_matches_get(self):
@@ -219,9 +333,22 @@ class TestCallAnnotateFunction(unittest.TestCase):
             b: undefined  # type: ignore
 
         annotate = get_annotate_from_class_namespace(Example.__dict__)
+
+        assert annotate is not None  # Type narrowing assertion
+
         annos = call_annotate_deferred(annotate, owner=Example)
 
         self.assertEqual(annos, get_deferred_annotations(Example))
+
+
+class TestCallEvaluateFunction(unittest.TestCase):
+    def test_call_type_obj(self):
+        type evaluable = list[str]
+        evaluate_func = evaluable.evaluate_value
+        deferred = call_evaluate_deferred(evaluate_func)
+
+        self.assertEqual(deferred.evaluate(), list[str])
+        self.assertEqual(deferred.evaluate(format=Format.STRING), "list[str]")
 
 
 class TestReAnnotateClass(unittest.TestCase):
@@ -280,3 +407,13 @@ class TestReAnnotateClass(unittest.TestCase):
 
         with self.assertRaises(NotImplementedError):
             new_annotate(Format.VALUE_WITH_FAKE_GLOBALS)  # type: ignore
+
+    def test_reannotated_gives_deferred(self):
+        def f(a: undefined): ...  # type: ignore
+
+        annos = get_deferred_annotations(f)
+        new_annotate = ReAnnotate(annos)
+
+        annos_recovered = call_annotate_deferred(new_annotate)
+
+        self.assertEqual(annos, annos_recovered)
