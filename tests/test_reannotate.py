@@ -1,7 +1,7 @@
 import typing
 import unittest
 
-from annotationlib import ForwardRef, Format, call_annotate_function, get_annotations
+from annotationlib import ForwardRef, Format, call_annotate_function, get_annotations, get_annotate_from_class_namespace
 from reannotate import DeferredAnnotation, call_annotate_deferred, get_deferred_annotations, ReAnnotate
 
 
@@ -110,7 +110,6 @@ class TestDeferredFormat(unittest.TestCase):
         self.assertEqual(repr(attrib_anno), repr(ref_anno))
 
 
-
 class TestGetDeferredAnnotations(unittest.TestCase):
     # Test features of annotations returned from get_deferred_annotations
 
@@ -210,6 +209,19 @@ class TestGetDeferredAnnotations(unittest.TestCase):
             list[...],  # type: ignore
             annos['a'].evaluate()
         )
+
+
+class TestCallAnnotateFunction(unittest.TestCase):
+    def test_call_matches_get(self):
+        # Check that call_annotate_deferred matches get_annotations on classes
+        class Example:
+            a: int
+            b: undefined  # type: ignore
+
+        annotate = get_annotate_from_class_namespace(Example.__dict__)
+        annos = call_annotate_deferred(annotate, owner=Example)
+
+        self.assertEqual(annos, get_deferred_annotations(Example))
 
 
 class TestReAnnotateClass(unittest.TestCase):
