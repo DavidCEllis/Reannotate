@@ -33,6 +33,13 @@ dev = [
 [tool.hatch.version]
 source = "vcs"
 
+[tool.hatch.build.targets.sdist]
+exclude = [
+    "/.github",  # Don't include github files in the sdist
+    "/scratch",
+    "uv.lock",  # The lockfile is not part of the sdist
+]
+
 [tool.hatch.build.hooks.vcs]
 version-file = "src/reannotate/_version.py"
 template = """
