@@ -1,22 +1,25 @@
-# Reannotate #
+# Reannotate
 
-This library acts as an extension to the new deferred annotations that arrived as part of PEP-649/749
-in Python 3.14.
+This library acts as an extension to the new deferred annotations that arrived as part of
+PEP-649/749 in Python 3.14.
 
-Its main purpose is to make it possible to manipulate PEP-649/749 annotations in order to recreate
-`__annotate__` functions that support all of the new annotations formats.
+Its main purpose is to make it possible to manipulate PEP-649/749 annotations in order to
+recreate `__annotate__` functions that support all of the new annotations formats.
 
 It also makes it easy to retrieve annotations and evaluate them individually.
 
-Unlike `Format.FORWARDREF`, `get_deferred_annotations` will always return `DeferredAnnotation` objects as the values of the annotations dictionary.
+Unlike `Format.FORWARDREF`, `get_deferred_annotations` will always return
+`DeferredAnnotation` objects as the values of the annotations dictionary.
 
-## Usage ##
+## Usage
 
-### Retrieving deferred annotations ###
+### Retrieving deferred annotations
 
-`get_deferred_annotations` is provided to retrieve deferred annotations from an annotated object:
+`get_deferred_annotations` is provided to retrieve deferred annotations from an annotated
+object:
 
 ```python
+from pprint import pp
 from reannotate import get_deferred_annotations
 
 class Example:
@@ -26,14 +29,17 @@ class Example:
 
 annos = get_deferred_annotations(Example)
 
-print(annos)
+pp(annos)
 ```
 
 ```python
-{'a': DeferredAnnotation('int'), 'b': DeferredAnnotation('list[unknown]'), 'c': DeferredAnnotation('str | undefined')}
+{'a': DeferredAnnotation('int'),
+ 'b': DeferredAnnotation('list[unknown]'),
+ 'c': DeferredAnnotation('str | undefined')}
 ```
 
-To use the `DeferredAnnotation` objects, they have an `.evaluate()` method that supports the standard `annotationlib` formats:
+To use the `DeferredAnnotation` objects, they have an `.evaluate()` method that supports
+the standard `annotationlib` formats:
 
 ```python
 from annotationlib import Format
@@ -55,7 +61,7 @@ If a value is defined at a later point, the annotation can then be evaluated ful
 unknown = float
 
 print(annos['b'].evaluate())
-print(annos['b'].is_resolved)  # If a DeferredAnnotation has been fully evaluated, this is set to True
+print(annos['b'].is_resolved)  # True if a DeferredAnnotation has been fully evaluated
 ```
 
 ```python
@@ -63,7 +69,7 @@ list[float]
 True
 ```
 
-### Creating a new `__annotate__` callable ###
+### Creating a new `__annotate__` callable
 
 Instances of the `ReAnnotate` class are intended to act as `__annotate__` callables.
 
@@ -86,13 +92,14 @@ print(call_annotate_function(new_annos, format=Format.FORWARDREF))
 {'a': <class 'int'>, 'b': list[ForwardRef('undefined', is_class=True, owner=<class '__main__.Example'>)]}
 ```
 
-## How does this differ from `Format.FORWARDREF` ##
+## How does this differ from `Format.FORWARDREF`
 
-### Resolution ###
+### Resolution
 
-The `FORWARDREF` format always attempts to resolve annotations at runtime as far as possible, this means
-that the `ForwardRef` objects can be contained inside other objects and made more difficult to resolve.
-This resolution makes them unsuitable to use to generate new `__annotate__` callables.
+The `FORWARDREF` format always attempts to resolve annotations at runtime as far as
+possible, this means that the `ForwardRef` objects can be contained inside other objects
+and made more difficult to resolve. This resolution makes them unsuitable to use to
+generate new `__annotate__` callables.
 
 ```python
 from annotationlib import get_annotations, Format
@@ -110,20 +117,23 @@ list[ForwardRef('ref', is_class=True, owner=<class '__main__.Example'>)]
 DeferredAnnotation('list[ref]')
 ```
 
-In this case if `ref` is defined later, the `DeferredAnnotation` can be resolved using `.evaluate()`, but resolving the
-annotation from the `ForwardRef` format requires evaluating the reference inside the `GenericAlias` for `list`.
+In this case if `ref` is defined later, the `DeferredAnnotation` can be resolved using
+`.evaluate()`, but resolving the annotation from the `ForwardRef` format requires
+evaluating the reference inside the `GenericAlias` for `list`.
 
-`DeferredAnnotation` also keeps the full string for the annotation and as such can be used to generate new
-`STRING` format annotations.
+`DeferredAnnotation` also keeps the full string for the annotation and as such can be used
+to generate new `STRING` format annotations.
 
-## Use case examples ##
+## Use case examples
 
-### Adding fields automatically to a dataclass ###
+### Adding fields automatically to a dataclass
 
-With the new annotations in Python 3.14 it is no longer always possible to retrieve `__annotations__`.
-To correctly handle inserting a field into a dataclass it is necessary to create a new `__annotate__` function.
+With the new annotations in Python 3.14 it is no longer always possible to retrieve
+`__annotations__`. To correctly handle inserting a field into a dataclass it is necessary
+to create a new `__annotate__` function.
 
-Using `get_deferred_annotations` and `ReAnnotate`, this is now as straight forward as it was prior to Python 3.14.
+Using `get_deferred_annotations` and `ReAnnotate`, this is now as straight forward as it
+was prior to Python 3.14.
 
 ```python
 from annotationlib import get_annotations, Format
@@ -166,16 +176,17 @@ print(Example(54, name="Dent")._used_kwargs)  # {'name': 'Dent'}
 
 # Define Unknown here and it will allow the annotations to evaluate
 Unknown = None | str
-print(get_annotations(Example))  # {'answer': <class 'int'>, 'name': <class 'str'>, 'mystery': None | str, '_used_kwargs': dict[str, object]}
+print(get_annotations(Example))
+# {'answer': <class 'int'>, 'name': <class 'str'>, 'mystery': None | str, '_used_kwargs': dict[str, object]}
 ```
 
-### Checking which annotations can be evaluated ###
+### Checking which annotations can be evaluated
 
-With the `FORWARDREF` format, it is not simple to know which annotations would fail to evaluate as
-forward references can be contained in other arbitrary objects.
+With the `FORWARDREF` format, it is not simple to know which annotations would fail to
+evaluate as forward references can be contained in other arbitrary objects.
 
-`DeferredAnnotation` instances have an `.is_resolved` property which indicates if the annotation
-has been fully evaluated.
+`DeferredAnnotation` instances have an `.is_resolved` property which indicates if the
+annotation has been fully evaluated.
 
 ```python
 from annotationlib import Format
@@ -191,26 +202,27 @@ print(annos['b'].evaluate(format=Format.FORWARDREF))  # list[ForwardRef('undefin
 print(annos['b'].is_resolved)  # False
 ```
 
-## What about... ##
+## What about...
 
-### Metaclasses ###
+### Metaclasses
 
 `call_annotate_deferred` is provided to retrieve deferred annotations in the same way that
 `call_annotate_function` is used to retrieve standard annotations.
 
-### `__future__` annotations ###
+### `__future__` annotations
 
-Deferred annotations are intended to act like regular annotations when called with the standard
-annotation evaluation methods in order to create new `__annotate__` functions that behave like
-the original.
+Deferred annotations are intended to act like regular annotations when called with the
+standard annotation evaluation methods in order to create new `__annotate__` functions
+that behave like the original.
 
-If `__future__` annotations are used, `get_deferred_annotations` will still get `DeferredAnnotation`
-objects, but all formats will evaluate to strings, as they do for `__future__` annotations with
-`annotationlib.get_annotations`.
+If `__future__` annotations are used, `get_deferred_annotations` will still get
+`DeferredAnnotation` objects, but all formats will evaluate to strings, as they do for
+`__future__` annotations with `annotationlib.get_annotations`.
 
-### Type Aliases ###
+### Type Aliases
 
-Like `get_annotations`, type aliases inside `DeferredAnnotation` objects will not be evaluated.
+Like `get_annotations`, type aliases inside `DeferredAnnotation` objects will not be
+evaluated.
 
 ```python
 from reannotate import get_deferred_annotations
@@ -223,16 +235,18 @@ v_anno = get_deferred_annotations(f)['v']
 print(v_anno.evaluate())  # Vector
 ```
 
-## Why does the project folder include the PSF License ##
+## Why does the project folder include the PSF License
 
-While not required for projects using Python, in order to implement deferred annotations, some logic
-is copied and modified from the standard library `annotationlib.py` module. This originally started
-as a fork of CPython that modified `annotationlib.py` to add deferred annotations as a format.
-This was split off in order for me to be able to use it in existing Python versions that have
-PEP 649/749 annotations.
+While not required for projects using Python, in order to implement deferred annotations,
+some logic is copied and modified from the standard library `annotationlib.py` module.
+This originally started as a fork of CPython that modified `annotationlib.py` to add
+deferred annotations as a format. This was split off in order for me to be able to use it
+in existing Python versions that have PEP 649/749 annotations.
 
-You can read [this discourse thread](https://discuss.python.org/t/add-a-format-deferred-option-for-pep-649-749-annotations/104001)
-for the origins of this. Ideally I would like to get this functionality from `annotationlib` itself
-but there didn't seem to be much interest in the thread.
-I'm hopeful that as more people start using the new annotations format they recognise this hole in the functionality and we can get this into the stdlib in some form.
-In the meantime this can act as a kind of backport.
+You can read
+[this discourse thread](https://discuss.python.org/t/add-a-format-deferred-option-for-pep-649-749-annotations/104001)
+for the origins of this. Ideally I would like to get this functionality from
+`annotationlib` itself but there didn't seem to be much interest in the thread. I'm
+hopeful that as more people start using the new annotations format they recognise this
+hole in the functionality and we can get this into the stdlib in some form. In the
+meantime this can act as a kind of backport.
