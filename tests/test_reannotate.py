@@ -343,6 +343,44 @@ class TestCallAnnotateFunction(unittest.TestCase):
 
         self.assertEqual(annos, get_deferred_annotations(Example))
 
+    def test_fake_globals_supporting_callable_called_with_value(self):
+        # If a callable claims to support fake globals, but is not a function
+        # a fallback to VALUE is used
+        class AnnotateCallable:
+            # Need the names for Format and NotImplementedError to be available
+            def __call__(self, fmt, *, _Format=Format, _NotImplementedError=NotImplementedError):
+                match fmt:
+                    case _Format.VALUE_WITH_FAKE_GLOBALS:
+                        return {'a': str}
+                    case _Format.VALUE:
+                        return {'a': int}
+                    case _:
+                        raise _NotImplementedError(fmt)
+
+        annotate = AnnotateCallable()
+
+        annos = call_annotate_deferred(annotate)
+        assert annos['a'].evaluate() is int
+
+    def test_fake_globals_supporting_callable_raises(self):
+        # If a callable claims to support fake globals, but is not a function
+        # Will fail if VALUE annotations can't be used
+        class AnnotateCallable:
+            # Need the names for Format and NotImplementedError to be available
+            def __call__(self, fmt, *, _Format=Format, _NotImplementedError=NotImplementedError):
+                match fmt:
+                    case _Format.VALUE_WITH_FAKE_GLOBALS:
+                        return {'a': str}
+                    case _Format.VALUE:
+                        raise NameError("undefined")
+                    case _:
+                        raise _NotImplementedError(fmt)
+
+        annotate = AnnotateCallable()
+
+        with self.assertRaises(TypeError):
+            call_annotate_deferred(annotate)
+
 
 class TestCallEvaluateFunction(unittest.TestCase):
     def test_call_type_obj(self):

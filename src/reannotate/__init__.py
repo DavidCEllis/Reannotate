@@ -7,6 +7,7 @@ which can be individually evaluated at a later point.
 It also includes a helper `ReAnnotate` class to be used to act as the new
 `__annotate__` callable on objects.
 """
+
 __lazy_modules__ = ["reannotate._version", "collections.abc", "typing"]
 
 import ast
@@ -27,10 +28,7 @@ from annotationlib import (
     type_repr,
 )
 
-from ._version import (
-    __version__ as __version__,
-    __version_tuple__ as __version_tuple__
-)
+from ._version import __version__ as __version__, __version_tuple__ as __version_tuple__
 
 # I want this to be well typed, but I **really** don't want to waste time
 # importing modules purely for typing at runtime
@@ -41,20 +39,24 @@ if sys.version_info >= (3, 15):
 else:
     # Hacks for imports prior to Python 3.15
     from _collections_abc import Callable as Callable, Mapping as Mapping
+
     if TYPE_CHECKING:
         import typing as t
     else:
         # Hack lazy import for 3.14
         t = sys.modules.get("typing")
+        # fmt: off
         if t is None:  # pragma: no cover
             class _LazyTyping:
                 def __getattr__(self, name):
                     global t
                     import typing
+
                     t = typing
                     return getattr(t, name)
             t = _LazyTyping()
             del _LazyTyping
+        # fmt: on
 
 if TYPE_CHECKING:
     from typing import overload as _overload
@@ -180,8 +182,8 @@ class EvaluationContext:
         self,
         obj: object,
         use_forwardref: bool = False,
-        extra_names: dict[str, t.Any] | None = None
-    ):
+        extra_names: dict[str, t.Any] | None = None,
+    ) -> tuple[t.Any, bool]:
         # returns the evaluated value and a boolean to indicate if ForwardRef was required
         if isinstance(obj, ast.expr):
             expr = ast.fix_missing_locations(ast.Expression(body=obj))
@@ -250,8 +252,8 @@ class DeferredAnnotation:
         obj: object,
         *,
         evaluation_context: EvaluationContext | None = None,
-        resolved_value: _Sentinel | t.Any = _sentinel
-    ):
+        resolved_value: _Sentinel | t.Any = _sentinel,
+    ) -> None:
         self._obj = obj
         self._evaluation_context = evaluation_context
 
@@ -300,17 +302,21 @@ class DeferredAnnotation:
     def evaluate(
         self,
         format: t.Literal[Format.STRING],
-        extra_names: dict[str, t.Any] | None = ...
+        extra_names: dict[str, t.Any] | None = ...,
     ) -> str: ...
 
     @_overload
     def evaluate(
         self,
-        format: t.Literal[Format.VALUE, Format.FORWARDREF] = ...,
-        extra_names: dict[str, t.Any] | None = ...
+        format: Format = ...,
+        extra_names: dict[str, t.Any] | None = ...,
     ) -> t.Any: ...
 
-    def evaluate(self, format=Format.VALUE, extra_names=None):
+    def evaluate(
+        self,
+        format: Format = Format.VALUE,
+        extra_names: dict[str, t.Any] | None = None,
+    ) -> t.Any | str:
         match format:
             case Format.VALUE | Format.FORWARDREF:
                 if self._resolved_value is not _sentinel:
@@ -391,7 +397,7 @@ class ReAnnotate:
 
     _deferred_annotations: Mapping[str, DeferredAnnotation]
 
-    def __init__(self, annotations: dict[str, t.Any]):
+    def __init__(self, annotations: dict[str, t.Any]) -> None:
         new_annos = {
             k: v if isinstance(v, DeferredAnnotation) else DeferredAnnotation(v)
             for k, v in annotations.items()
@@ -409,12 +415,12 @@ class ReAnnotate:
     def __call__(self, format: t.Literal[Format.STRING]) -> dict[str, str]: ...
 
     @_overload
-    def __call__(self, format: t.Literal[Format.VALUE, Format.FORWARDREF]) -> dict[str, t.Any]: ...
+    def __call__(
+        self,
+        format: Format,
+    ) -> dict[str, t.Any]: ...
 
-    @_overload
-    def __call__(self, format: Format) -> dict[str, t.Any]: ...
-
-    def __call__(self, format, /):
+    def __call__(self, format: Format, /) -> dict[str, t.Any]:
         match format:
             case Format.VALUE | Format.FORWARDREF | Format.STRING:
                 return {
@@ -430,12 +436,13 @@ class ReAnnotate:
 
 @_overload
 def call_annotate_deferred(
-    annotate: Callable[[Format], dict[str, t.Any]],
+    annotate: Callable[[Format], t.Any],
     *,
     owner: object = ...,
     skip_globals_check: bool = ...,
     _is_evaluate: t.Literal[True],
 ) -> DeferredAnnotation: ...
+
 
 @_overload
 def call_annotate_deferred(
@@ -446,13 +453,14 @@ def call_annotate_deferred(
     _is_evaluate: t.Literal[False] = ...,
 ) -> dict[str, DeferredAnnotation]: ...
 
+
 def call_annotate_deferred(
-    annotate,
+    annotate: Callable[[Format], dict[str, t.Any]] | Callable[[Format], t.Any],
     *,
-    owner = None,
-    skip_globals_check = False,
-    _is_evaluate = False,
-):
+    owner: object = None,
+    skip_globals_check: bool = False,
+    _is_evaluate: bool = False,
+) -> dict[str, DeferredAnnotation] | DeferredAnnotation:
     """
     Call an annotate function in a way to retrieve deferred annotations.
 
@@ -485,6 +493,18 @@ def call_annotate_deferred(
             return {k: DeferredAnnotation(v) for k, v in annotate(Format.VALUE).items()}
         except Exception:
             pass
+
+    # Very rare case where __annotate__ appears to support VALUE_WITH_FAKE_GLOBALS
+    # but is not actually a function.
+    if not isinstance(annotate, types.FunctionType):
+        # Try calling with VALUE annotations
+        try:
+            return {k: DeferredAnnotation(v) for k, v in annotate(Format.VALUE).items()}
+        except Exception:
+            raise TypeError(
+                "Evaluating in the fake globals context is "
+                f"only supported for functions, not {type(annotate)!r}"
+            )
 
     # Logic taken from call_annotate_function in annotationlib.py
     # Modified from the logic for STRING annotations
@@ -552,7 +572,7 @@ def call_evaluate_deferred(
     evaluate: Callable[[Format], t.Any],
     *,
     owner: object = None,
-    skip_globals_check: bool = False
+    skip_globals_check: bool = False,
 ) -> DeferredAnnotation:
     return call_annotate_deferred(
         evaluate,
@@ -565,7 +585,7 @@ def call_evaluate_deferred(
 def get_deferred_annotations(
     obj: t.Any,
     *,
-    skip_globals_check: bool = False
+    skip_globals_check: bool = False,
 ) -> dict[str, DeferredAnnotation]:
     """
     Extend annotationlib.get_annotations to handle `Format.DEFERRED`
