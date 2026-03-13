@@ -3,14 +3,16 @@
 This library acts as an extension to the new deferred annotations that arrived as part of PEP-649/749
 in Python 3.14.
 
-Its main purpose is to make it as easy to modify and create `__annotate__` functions as it was to modify
-the `__annotations__` dictionary in earlier versions of Python.
+Its main purpose is to make it possible to manipulate PEP-649/749 annotations in order to recreate
+`__annotate__` functions that support all of the new annotations formats.
 
 It also makes it easy to retrieve annotations and evaluate them individually.
 
 Unlike `Format.FORWARDREF`, `get_deferred_annotations` will always return `DeferredAnnotation` objects as the values of the annotations dictionary.
 
-## Retrieving deferred annotations ##
+## Usage ##
+
+### Retrieving deferred annotations ###
 
 `get_deferred_annotations` is provided to retrieve deferred annotations from an annotated object:
 
@@ -61,7 +63,7 @@ list[float]
 True
 ```
 
-## Creating a new `__annotate__` callable ##
+### Creating a new `__annotate__` callable ###
 
 Instances of the `ReAnnotate` class are intended to act as `__annotate__` callables.
 
