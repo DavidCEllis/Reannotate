@@ -22,6 +22,11 @@ def _false_get_annotations(obj: t.Any, **kwargs) -> dict[str, DeferredAnnotation
     return get_deferred_annotations(obj)
 
 
+patch_dict = {
+    "get_annotations": _false_get_annotations,
+}
+
+
 def get_patched_function(
     func: types.FunctionType,
     patch_dict: dict[str, t.Any],
@@ -38,11 +43,6 @@ def get_patched_function(
     patched_globs[func.__name__] = new_func
     patch_dict[func.__name__] = new_func
     return new_func
-
-
-patch_dict = {
-    "get_annotations": _false_get_annotations,
-}
 
 # Patch the relevant inspect functions.
 # _signature_from_function is used by _signature_from_callable
@@ -68,11 +68,15 @@ def signature(
     """
     Return a signature with deferred annotations
 
-    This has the same arguments as inspect.signature but only `obj`
-    and `follow_wrapped` are used.
+    This has the same arguments as inspect.signature but annotation format
+    will be ignored.
     """
     return _deferred_signature_from_callable(
         obj,
         sigcls=inspect.Signature,
         follow_wrapper_chains=follow_wrapped,
+        globals=globals,
+        locals=locals,
+        eval_str=eval_str,
+        annotation_format=annotation_format,
     )
