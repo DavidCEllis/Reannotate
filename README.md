@@ -132,8 +132,8 @@ With the new annotations in Python 3.14 it is no longer always possible to retri
 `__annotations__`. To correctly handle inserting a field into a dataclass it is necessary
 to create a new `__annotate__` function.
 
-Using `get_deferred_annotations` and `ReAnnotate`, this is now as straight forward as it
-was prior to Python 3.14.
+Using `get_deferred_annotations` and `ReAnnotate`, this can now be done in a similar fashion
+as it was possible prior to Python 3.14.
 
 ```python
 from annotationlib import get_annotations, Format
