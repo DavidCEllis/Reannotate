@@ -1,3 +1,4 @@
+import ast
 import typing
 import unittest
 
@@ -458,3 +459,15 @@ class TestReAnnotateClass(unittest.TestCase):
         annos_recovered = call_annotate_deferred(new_annotate)
 
         self.assertEqual(annos, annos_recovered)
+
+
+class TestExtra(unittest.TestCase):
+    # These test some edge cases
+    def test_ast_without_context(self):
+        # test that an ast object without context
+        # evaluates to string
+        obj = ast.parse("list[int]").body[0].value
+
+        anno = DeferredAnnotation(obj)
+
+        self.assertEqual(anno.evaluate(), "list[int]")
