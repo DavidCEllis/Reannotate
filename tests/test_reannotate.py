@@ -1,3 +1,4 @@
+from packaging.markers import UndefinedComparison
 import ast
 import typing
 import unittest
@@ -471,3 +472,45 @@ class TestExtra(unittest.TestCase):
         anno = DeferredAnnotation(obj)
 
         self.assertEqual(anno.evaluate(), "list[int]")
+
+    def test_user_locals(self):
+        # Test if a user provides a locals dict
+        globs = {}
+        locs = {"undefined": str}
+
+        ctx = EvaluationContext(globals=globs, locals=locs)
+
+        val, _ = ctx.evaluate("undefined")
+
+        self.assertEqual(val, str)
+
+    def test_context_evaluate_forwardref_code(self):
+        # This isn't used internally in this extracted version
+        # but would be if it became an internal format
+        class Example:
+            a: undefined
+
+        a_anno = get_deferred_annotations(Example)['a']
+        # Extract the evaluation context, and a forwardref
+        a_context = a_anno.evaluation_context
+
+        # type narrowing, not a test
+        assert a_context is not None
+
+        a_ref = a_anno.evaluate(format=Format.FORWARDREF)
+
+        assert isinstance(a_ref, ForwardRef)
+
+        a_val, a_used_ref = a_context.evaluate(a_ref, use_forwardref=True)
+
+        self.assertTrue(a_used_ref)
+        self.assertIsInstance(a_val, ForwardRef)
+
+        undefined = str
+
+        a_val, a_used_ref = a_context.evaluate(a_ref)
+        self.assertFalse(a_used_ref)
+        self.assertEqual(a_val, str)
+
+        # Also check using the code object directly
+        a_val, a_used_ref = a_context.evaluate(a_ref.__forward_code__)
