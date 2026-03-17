@@ -514,3 +514,11 @@ class TestExtra(unittest.TestCase):
 
         # Also check using the code object directly
         a_val, a_used_ref = a_context.evaluate(a_ref.__forward_code__)
+
+    def test_version_imports(self):
+        # This is largely to make sure the file imports in 3.15+
+        # as it is a lazy import there
+        from reannotate._version import __version__, __version_tuple__
+
+        self.assertIsInstance(__version__, str)
+        self.assertIsInstance(__version_tuple__, tuple)
