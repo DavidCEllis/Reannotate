@@ -51,6 +51,16 @@ wheels = [
 ]
 
 [[package]]
+name = "coverage-simple-excludes"
+version = "1.1.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "coverage" },
+    { name = "re-int-ineq" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/34/b7/7b1460c3e7bb83b36c2b828a4e08c63ae6b3dcebcedf612ec31039b8434d/coverage_simple_excludes-1.1.1.tar.gz", hash = "sha256:401e2ab99ba0f1b972262412f06bfe294e63ea2c718f8eb2e5b9f5367d8be4ac", size = 12260, upload-time = "2025-12-02T13:35:44.084Z" }
+
+[[package]]
 name = "iniconfig"
 version = "2.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -117,11 +127,18 @@ wheels = [
 ]
 
 [[package]]
+name = "re-int-ineq"
+version = "0.9.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/04/9c/b068abf71b3f35d9f29d11c31631a380830883f847f9b4e9db37878d4c72/re-int-ineq-0.9.0.tar.gz", hash = "sha256:0ff761aaa0f4fed0119af6bb3242a6cd23d727dea37e818ef1753eb7972fbbf1", size = 13799, upload-time = "2024-03-08T19:24:49.288Z" }
+
+[[package]]
 name = "reannotate"
 source = { editable = "." }
 
 [package.dev-dependencies]
 dev = [
+    { name = "coverage-simple-excludes" },
     { name = "pytest" },
     { name = "pytest-cov" },
 ]
@@ -130,6 +147,7 @@ dev = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "coverage-simple-excludes", specifier = ">=1.1.1" },
     { name = "pytest", specifier = ">=8.4" },
     { name = "pytest-cov", specifier = ">=6.1" },
 ]

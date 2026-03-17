@@ -29,6 +29,7 @@ dynamic = ['version']
 dev = [
     "pytest>=8.4",
     "pytest-cov>=6.1",
+    "coverage-simple-excludes>=1.1.1",
 ]
 
 [tool.hatch.version]
@@ -55,8 +56,12 @@ testpaths = [
     "tests",
 ]
 
+[tool.coverage.run]
+plugins = ["coverage_simple_excludes"]
+
 [tool.coverage.report]
 # Exclude vendored code
+fail_under = 90
 exclude_also = [
     "def __repr__",
 ]
