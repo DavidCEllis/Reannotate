@@ -1,7 +1,5 @@
-# Patched version of inspect.signature that uses deferred annotations
-# This works by making copies of the relevant functions and patching their
-# usage of get_annotations to get_deferred_annotations with additional
-# arguments ignored.
+# Patched versions of stdlib functions that use regular annotations
+# to use deferred annotations
 __lazy_modules__ = ["collections.abc", "typing"]
 
 import annotationlib
@@ -12,6 +10,9 @@ import inspect
 from collections.abc import Callable, Mapping
 
 from . import get_deferred_annotations, DeferredAnnotation
+
+
+__all__ = ["signature"]
 
 
 type _IntrospectableCallable = Callable[..., t.Any]
@@ -27,7 +28,7 @@ patch_dict = {
 }
 
 
-def get_patched_function(
+def _get_patched_function(
     func: types.FunctionType,
     patch_dict: dict[str, t.Any],
 ) -> types.FunctionType:
@@ -46,11 +47,11 @@ def get_patched_function(
 
 # Patch the relevant inspect functions.
 # _signature_from_function is used by _signature_from_callable
-_deferred_signature_from_function = get_patched_function(
+_deferred_signature_from_function = _get_patched_function(
     inspect._signature_from_function,
     patch_dict,
 )
-_deferred_signature_from_callable = get_patched_function(
+_deferred_signature_from_callable = _get_patched_function(
     inspect._signature_from_callable,
     patch_dict,
 )
