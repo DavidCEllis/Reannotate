@@ -33,10 +33,10 @@ from ._version import __version__ as __version__, __version_tuple__ as __version
 # I want this to be well typed, but I **really** don't want to waste time
 # importing modules purely for typing at runtime
 TYPE_CHECKING = False
-if sys.version_info >= (3, 15):
+if sys.version_info >= (3, 15):  # cover-req-ge3.15
     from collections.abc import Callable as Callable, Mapping as Mapping
     import typing as t
-else:
+else:  # cover-req-lt3.15
     # Hacks for imports prior to Python 3.15
     from _collections_abc import Callable as Callable, Mapping as Mapping
 
@@ -403,8 +403,8 @@ class ReAnnotate:
             for k, v in annotations.items()
         }
         try:
-            self._deferred_annotations = frozendict(new_annos)  # type: ignore
-        except NameError:
+            self._deferred_annotations = frozendict(new_annos)  # type: ignore  # cover-req-ge3.15
+        except NameError:  # cover-req-lt3.15
             self._deferred_annotations = new_annos
 
     @property
