@@ -4,9 +4,9 @@ build-backend = "hatchling.build"
 
 [project]
 name = "reannotate"
-description="An extension to annotationlib to assist in creating new annotate functions"
+description = "An extension to annotationlib to assist in creating new annotate functions"
 authors = [
-  { name="David C Ellis" },
+    { name = "David C Ellis" },
 ]
 requires-python = ">=3.14"
 classifiers = [
@@ -22,7 +22,7 @@ license-files = [
     "LICENSE",
     "LICENSE.PSF",
 ]
-readme="README.md"
+readme = "README.md"
 dynamic = ['version']
 
 [dependency-groups]
@@ -36,7 +36,7 @@ source = "vcs"
 
 [tool.hatch.build.targets.sdist]
 exclude = [
-    "/.github",  # Don't include github files in the sdist
+    "/.github", # Don't include github files in the sdist
     "/scratch",
     "uv.lock",  # The lockfile is not part of the sdist
 ]
@@ -50,7 +50,7 @@ __version_tuple__ = {version_tuple}
 
 
 [tool.pytest.ini_options]
-addopts= "--cov=src/ --cov-report=term-missing"
+addopts = "--cov=src/ --cov-report=term-missing"
 testpaths = [
     "tests",
 ]
@@ -62,9 +62,10 @@ exclude_also = [
 ]
 
 [tool.ty.rules]
-unused-type-ignore-comment = "ignore"  # Not all type ignore comments are for ty
+unused-type-ignore-comment = "ignore" # Not all type ignore comments are for ty
+unresolved-attribute = "ignore"
 
 [tool.ruff.lint.per-file-ignores]
 # Ignore undefined names in test files - these are used for ForwardRef checks
-"src/*.py" = ["F811"]  # Ruff doesn't recognise fake overloads as overloads
+"src/*.py" = ["F811"]   # Ruff doesn't recognise fake overloads as overloads
 "tests/*.py" = ["F821"]
