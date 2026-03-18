@@ -25,6 +25,9 @@ license-files = [
 readme = "README.md"
 dynamic = ['version']
 
+[project.urls]
+"Homepage" = "https://github.com/DavidCEllis/Reannotate"
+
 [dependency-groups]
 dev = [
     "pytest>=8.4",
