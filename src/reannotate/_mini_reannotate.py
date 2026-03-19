@@ -46,12 +46,13 @@ def _call_annotate_deferred(
 
 def get_deferred_annotations(obj):
     annotations = None
+    value_annotations = None
     annotate = getattr(obj, "__annotate__", None)
     if annotate is not None:
         try:
             # Needs to support VALUE_WITH_FAKE_GLOBALS to have
             # the appropriate globals information
-            annotate(Format.VALUE_WITH_FAKE_GLOBALS)
+            value_annotations = annotate(Format.VALUE_WITH_FAKE_GLOBALS)
         except NotImplementedError:
             # Fallback for user functions
             annotations = get_annotations(obj, format=Format.FORWARDREF)
@@ -63,7 +64,15 @@ def get_deferred_annotations(obj):
     else:
         annotations = get_annotations(obj)
 
-    return {k: DeferredAnnotation(v) for k, v in annotations.items()}
+    if value_annotations:
+        deferred_annos = {
+            k: DeferredAnnotation(v, resolved_value=value_annotations.get(k, _sentinel))
+            for k, v in annotations.items()
+        }
+    else:
+        deferred_annos = {k: DeferredAnnotation(v) for k, v in annotations.items()}
+
+    return deferred_annos
 
 
 class DeferredAnnotation:
@@ -89,11 +98,13 @@ class DeferredAnnotation:
     def __init__(
         self,
         obj: object,
+        *,
+        resolved_value: object | _Sentinel = _sentinel,
     ) -> None:
         self._obj = obj
 
         self._as_str = None
-        self._resolved_value = _sentinel
+        self._resolved_value = resolved_value
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, DeferredAnnotation):
