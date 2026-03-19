@@ -1,3 +1,4 @@
+# type: ignore  # Pylance should ignore this file
 import timeit
 
 from annotationlib import get_annotations, Format, call_annotate_function
