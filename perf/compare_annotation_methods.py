@@ -1,7 +1,7 @@
 # type: ignore  # Pylance should ignore this file
-import timeit
-
 from annotationlib import get_annotations, Format, call_annotate_function
+from timeit import timeit
+
 from reannotate import get_deferred_annotations
 
 
@@ -26,10 +26,10 @@ class Example:
     e: object
 
 
-ref_example = timeit.timeit(lambda: repeated_call_annotate_forwardref(Example), number=10_000)
-string_example = timeit.timeit(lambda: get_annotations(Example, format=Format.STRING), number=10_000)
-deferred_example = timeit.timeit(lambda: get_deferred_annotations(Example), number=10_000)
-deferred_eval = timeit.timeit(lambda: get_evaluated_deferred(Example), number=10_000)
+ref_example = timeit(lambda: repeated_call_annotate_forwardref(Example), number=10_000)
+string_example = timeit(lambda: get_annotations(Example, format=Format.STRING), number=10_000)
+deferred_example = timeit(lambda: get_deferred_annotations(Example), number=10_000)
+deferred_eval = timeit(lambda: get_evaluated_deferred(Example), number=10_000)
 
 print("Example with all identifiers")
 print(f"Annotation Time: {ref_example:.3g}s")
@@ -47,10 +47,10 @@ class Example:
     e: tuple[int, float, str]
 
 
-ref_example = timeit.timeit(lambda: repeated_call_annotate_forwardref(Example), number=10_000)
-string_example = timeit.timeit(lambda: get_annotations(Example, format=Format.STRING), number=10_000)
-deferred_example = timeit.timeit(lambda: get_deferred_annotations(Example), number=10_000)
-deferred_eval = timeit.timeit(lambda: get_evaluated_deferred(Example), number=10_000)
+ref_example = timeit(lambda: repeated_call_annotate_forwardref(Example), number=10_000)
+string_example = timeit(lambda: get_annotations(Example, format=Format.STRING), number=10_000)
+deferred_example = timeit(lambda: get_deferred_annotations(Example), number=10_000)
+deferred_eval = timeit(lambda: get_evaluated_deferred(Example), number=10_000)
 
 print("Example with some generics")
 print(f"Annotation Time: {ref_example:.3g}s")
@@ -67,10 +67,10 @@ class Example:
     e: unknown[list[str, dict[str, int]]]
 
 
-ref_example = timeit.timeit(lambda: repeated_call_annotate_forwardref(Example, format=Format.FORWARDREF), number=10_000)
-string_example = timeit.timeit(lambda: get_annotations(Example, format=Format.STRING), number=10_000)
-deferred_example = timeit.timeit(lambda: get_deferred_annotations(Example), number=10_000)
-deferred_eval = timeit.timeit(lambda: get_evaluated_deferred(Example), number=10_000)
+ref_example = timeit(lambda: repeated_call_annotate_forwardref(Example, format=Format.FORWARDREF), number=10_000)
+string_example = timeit(lambda: get_annotations(Example, format=Format.STRING), number=10_000)
+deferred_example = timeit(lambda: get_deferred_annotations(Example), number=10_000)
+deferred_eval = timeit(lambda: get_evaluated_deferred(Example), number=10_000)
 
 print("Example with multiple forwardref containers")
 print(f"Annotation Time: {ref_example:.3g}s")
@@ -89,10 +89,10 @@ class Example:
     f: object.undefined
 
 
-ref_example = timeit.timeit(lambda: repeated_call_annotate_forwardref(Example, format=Format.FORWARDREF), number=10_000)
-string_example = timeit.timeit(lambda: get_annotations(Example, format=Format.STRING), number=10_000)
-deferred_example = timeit.timeit(lambda: get_deferred_annotations(Example), number=10_000)
-deferred_eval = timeit.timeit(lambda: get_evaluated_deferred(Example), number=10_000)
+ref_example = timeit(lambda: repeated_call_annotate_forwardref(Example, format=Format.FORWARDREF), number=10_000)
+string_example = timeit(lambda: get_annotations(Example, format=Format.STRING), number=10_000)
+deferred_example = timeit(lambda: get_deferred_annotations(Example), number=10_000)
+deferred_eval = timeit(lambda: get_evaluated_deferred(Example), number=10_000)
 
 print("Example with multiple forwardref containers and an attribute error")
 print(f"Annotation Time: {ref_example:.3g}s")
