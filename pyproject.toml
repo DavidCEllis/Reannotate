@@ -41,6 +41,7 @@ source = "vcs"
 [tool.hatch.build.targets.sdist]
 exclude = [
     "/.github", # Don't include github files in the sdist
+    "/perf",
     "/scratch",
     "uv.lock",  # The lockfile is not part of the sdist
 ]
