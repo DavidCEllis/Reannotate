@@ -5,6 +5,9 @@ PEP-649/749 in Python 3.14.
 
 Its main purpose is to make it possible to manipulate PEP-649/749 annotations in order to
 recreate `__annotate__` functions that support all of the new annotations formats.
+It should be as simple to manipulate and change annotations to create new `__annotate__`
+functions with `reannotate` as it was to manipulate and create new `__annotations__` under
+older versions of Python.
 
 It also makes it easy to retrieve annotations and evaluate them individually.
 
@@ -125,6 +128,58 @@ evaluating the reference inside the `GenericAlias` for `list`.
 to generate new `STRING` format annotations.
 
 ## Use case examples
+
+### A 'type' attribute on dataclass-like fields that evaluates
+
+With Python 3.14 annotations, dataclasses can now accept forward references without needing
+to use `__future__` annotations.
+
+Take for example a self referential class:
+
+```python
+from dataclasses import dataclass, fields
+
+@dataclass
+class Example:
+    examples: list[Example]
+```
+
+While this now works, the dataclass 'field' for 'examples' is fixed with the forward reference
+contained in the 'type' attribute.
+
+```python
+examples_field = fields(Example)[0]
+print(examples_field.type)
+```
+
+Output:
+```python
+list[ForwardRef('Example', is_class=True, owner=<class '__main__.Example'>)]
+```
+
+Using `reannotate`, this can be avoided. Here is the same example but using
+[ducktools-classbuilder](https://github.com/DavidCEllis/ducktools-classbuilder)
+instead of `dataclasses`:
+
+```python
+from ducktools.classbuilder.prefab import get_attributes, prefab
+
+@prefab
+class Example:
+    examples: list[Example]
+
+examples_attribute = get_attributes(Example)['examples']
+print(examples_attribute.type)
+```
+
+Output:
+```python
+list[__main__.Example]
+```
+
+This is because internally, `ducktools-classbuilder` uses reannotate's
+`get_deferred_annotations` instead of `Format.FORWARDREF` and evaluates them
+only when `.type` is accessed.
 
 ### Adding fields automatically to a dataclass
 
