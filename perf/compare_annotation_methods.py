@@ -5,6 +5,9 @@ from timeit import timeit
 from reannotate import get_deferred_annotations
 
 
+COUNT = 10_000
+
+
 def get_evaluated_deferred(obj):
     return {
         k: v.evaluate(format=Format.FORWARDREF)
@@ -26,16 +29,16 @@ class Example:
     e: object
 
 
-ref_example = timeit(lambda: repeated_call_annotate_forwardref(Example), number=10_000)
-string_example = timeit(lambda: get_annotations(Example, format=Format.STRING), number=10_000)
-deferred_example = timeit(lambda: get_deferred_annotations(Example), number=10_000)
-deferred_eval = timeit(lambda: get_evaluated_deferred(Example), number=10_000)
+ref_example = timeit(lambda: repeated_call_annotate_forwardref(Example), number=COUNT)
+string_example = timeit(lambda: get_annotations(Example, format=Format.STRING), number=COUNT)
+deferred_example = timeit(lambda: get_deferred_annotations(Example), number=COUNT)
+deferred_eval = timeit(lambda: get_evaluated_deferred(Example), number=COUNT)
 
 print("Example with all identifiers")
-print(f"Annotation Time: {ref_example:.3g}s")
-print(f"STRING annotations - {string_example:.3g} | {string_example/ref_example:.3g}x")
-print(f"deferred annotations - {deferred_example:.3g} | {deferred_example/ref_example:.3g}x")
-print(f"deferred eval annotations - {deferred_eval:.3g} |  {deferred_eval/ref_example:.3g}x")
+print(f"Annotation Time: {1000 * ref_example/COUNT:.3g}ms")
+print(f"STRING annotations - {1000 * string_example/COUNT:.3g}ms | {string_example/ref_example:.3g}x")
+print(f"deferred annotations - {1000 * deferred_example/COUNT:.3g}ms | {deferred_example/ref_example:.3g}x")
+print(f"deferred eval annotations - {1000 * deferred_eval/COUNT:.3g}ms |  {deferred_eval/ref_example:.3g}x")
 print()
 
 
@@ -47,16 +50,16 @@ class Example:
     e: tuple[int, float, str]
 
 
-ref_example = timeit(lambda: repeated_call_annotate_forwardref(Example), number=10_000)
-string_example = timeit(lambda: get_annotations(Example, format=Format.STRING), number=10_000)
-deferred_example = timeit(lambda: get_deferred_annotations(Example), number=10_000)
-deferred_eval = timeit(lambda: get_evaluated_deferred(Example), number=10_000)
+ref_example = timeit(lambda: repeated_call_annotate_forwardref(Example), number=COUNT)
+string_example = timeit(lambda: get_annotations(Example, format=Format.STRING), number=COUNT)
+deferred_example = timeit(lambda: get_deferred_annotations(Example), number=COUNT)
+deferred_eval = timeit(lambda: get_evaluated_deferred(Example), number=COUNT)
 
 print("Example with some generics")
-print(f"Annotation Time: {ref_example:.3g}s")
-print(f"STRING annotations - {string_example:.3g} | {string_example/ref_example:.3g}x")
-print(f"deferred annotations - {deferred_example:.3g} | {deferred_example/ref_example:.3g}x")
-print(f"deferred eval annotations - {deferred_eval:.3g} |  {deferred_eval/ref_example:.3g}x")
+print(f"Annotation Time: {1000 * ref_example/COUNT:.3g}ms")
+print(f"STRING annotations - {1000 * string_example/COUNT:.3g}ms | {string_example/ref_example:.3g}x")
+print(f"deferred annotations - {1000 * deferred_example/COUNT:.3g}ms | {deferred_example/ref_example:.3g}x")
+print(f"deferred eval annotations - {1000 * deferred_eval/COUNT:.3g}ms |  {deferred_eval/ref_example:.3g}x")
 print()
 
 class Example:
@@ -67,16 +70,16 @@ class Example:
     e: unknown[list[str, dict[str, int]]]
 
 
-ref_example = timeit(lambda: repeated_call_annotate_forwardref(Example, format=Format.FORWARDREF), number=10_000)
-string_example = timeit(lambda: get_annotations(Example, format=Format.STRING), number=10_000)
-deferred_example = timeit(lambda: get_deferred_annotations(Example), number=10_000)
-deferred_eval = timeit(lambda: get_evaluated_deferred(Example), number=10_000)
+ref_example = timeit(lambda: repeated_call_annotate_forwardref(Example, format=Format.FORWARDREF), number=COUNT)
+string_example = timeit(lambda: get_annotations(Example, format=Format.STRING), number=COUNT)
+deferred_example = timeit(lambda: get_deferred_annotations(Example), number=COUNT)
+deferred_eval = timeit(lambda: get_evaluated_deferred(Example), number=COUNT)
 
 print("Example with multiple forwardref containers")
-print(f"Annotation Time: {ref_example:.3g}s")
-print(f"STRING annotations - {string_example:.3g} | {string_example/ref_example:.3g}x")
-print(f"deferred annotations - {deferred_example:.3g} | {deferred_example/ref_example:.3g}x")
-print(f"deferred eval annotations - {deferred_eval:.3g} |  {deferred_eval/ref_example:.3g}x")
+print(f"Annotation Time: {1000 * ref_example/COUNT:.3g}ms")
+print(f"STRING annotations - {1000 * string_example/COUNT:.3g}ms | {string_example/ref_example:.3g}x")
+print(f"deferred annotations - {1000 * deferred_example/COUNT:.3g}ms | {deferred_example/ref_example:.3g}x")
+print(f"deferred eval annotations - {1000 * deferred_eval/COUNT:.3g}ms |  {deferred_eval/ref_example:.3g}x")
 print()
 
 
@@ -89,14 +92,14 @@ class Example:
     f: object.undefined
 
 
-ref_example = timeit(lambda: repeated_call_annotate_forwardref(Example, format=Format.FORWARDREF), number=10_000)
-string_example = timeit(lambda: get_annotations(Example, format=Format.STRING), number=10_000)
-deferred_example = timeit(lambda: get_deferred_annotations(Example), number=10_000)
-deferred_eval = timeit(lambda: get_evaluated_deferred(Example), number=10_000)
+ref_example = timeit(lambda: repeated_call_annotate_forwardref(Example, format=Format.FORWARDREF), number=COUNT)
+string_example = timeit(lambda: get_annotations(Example, format=Format.STRING), number=COUNT)
+deferred_example = timeit(lambda: get_deferred_annotations(Example), number=COUNT)
+deferred_eval = timeit(lambda: get_evaluated_deferred(Example), number=COUNT)
 
 print("Example with multiple forwardref containers and an attribute error")
-print(f"Annotation Time: {ref_example:.3g}s")
-print(f"STRING annotations - {string_example:.3g} | {string_example/ref_example:.3g}x")
-print(f"deferred annotations - {deferred_example:.3g} | {deferred_example/ref_example:.3g}x")
-print(f"deferred eval annotations - {deferred_eval:.3g} |  {deferred_eval/ref_example:.3g}x")
+print(f"Annotation Time: {1000 * ref_example/COUNT:.3g}ms")
+print(f"STRING annotations - {1000 * string_example/COUNT:.3g}ms | {string_example/ref_example:.3g}x")
+print(f"deferred annotations - {1000 * deferred_example/COUNT:.3g}ms | {deferred_example/ref_example:.3g}x")
+print(f"deferred eval annotations - {1000 * deferred_eval/COUNT:.3g}ms |  {deferred_eval/ref_example:.3g}x")
 print()
