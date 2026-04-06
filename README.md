@@ -134,9 +134,9 @@ DeferredAnnotation('unknown')
 (DeferredAnnotation('str'),)
 ```
 
-The primary purpose of these functions is to allow for extracting arguments from generics to
-create new annotations. For example, using the argument to `InitVar` as the annotation for
-`__init__` in something like dataclasses.
+The primary purpose of these functions is to allow for extracting arguments from generics
+to create new annotations. For example, using the argument to `InitVar` as the annotation
+for `__init__` in something like dataclasses.
 
 ## How does this differ from `Format.FORWARDREF`
 
@@ -318,6 +318,13 @@ that behave like the original.
 If `__future__` annotations are used, `get_deferred_annotations` will still get
 `DeferredAnnotation` objects, but all formats will evaluate to strings, as they do for
 `__future__` annotations with `annotationlib.get_annotations`.
+
+### Literal string annotations
+
+Literal strings in annotations are treated as if they are from `__future__` annotations.
+They will not have an associated evaluation context to prevent accidental attempts at
+evaluation. This is done to be consistent with how they would be returned from
+`get_annotations` without `eval_str`.
 
 ### Type Aliases
 

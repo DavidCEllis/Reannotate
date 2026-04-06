@@ -124,7 +124,7 @@ class EvaluationContext:
         is_class: bool = False,
         cells: Mapping[str, t.Any] | None = None,
         type_params: tuple[t.TypeVar | t.ParamSpec | t.TypeVarTuple, ...] | None = None,
-        extra_names: Mapping[str, t.Any] | None = None
+        extra_names: Mapping[str, t.Any] | None = None,
     ):
         self.globals = globals
         self._locals = locals
@@ -477,13 +477,10 @@ class DeferredAnnotation:
     def _get_origin_and_args(
         self,
     ) -> tuple[None | DeferredAnnotation, tuple[DeferredAnnotation, ...]]:
-        if self.evaluation_context and isinstance(
-            self._obj, (str, ast.expr, ForwardRef)
-        ):
+        if isinstance(self._obj, (str, ast.expr, ForwardRef)):
             if isinstance(self._obj, ast.expr):
                 ast_expr = self._obj
             elif isinstance(self._obj, ForwardRef):
-                # Need to revive the evaluationcontext logic
                 ast_expr = self._obj.__ast_node__
                 if ast_expr is None:
                     ast_expr = compile(
@@ -685,6 +682,10 @@ def call_annotate_deferred(
         cells=cell_dict,
     )
 
+    # Don't add an evaluation context for literal strings in annotations
+    # This prevents them from being accidentally evaluated
+    # See TestStringLiteral
+
     if _is_evaluate:
         return DeferredAnnotation(
             (
@@ -692,7 +693,7 @@ def call_annotate_deferred(
                 if isinstance(annos, _Stringifier)
                 else _stringify_single(annos)
             ),
-            evaluation_context=context,
+            evaluation_context=context if not isinstance(annos, str) else None,
             resolved_value=value_annotations,
         )
     else:
@@ -712,7 +713,7 @@ def call_annotate_deferred(
                     if isinstance(val, _Stringifier)
                     else _stringify_single(val)
                 ),
-                evaluation_context=context,
+                evaluation_context=context if not isinstance(val, str) else None,
                 resolved_value=(
                     value_annotations[key]  # type: ignore
                     if value_annotations is not _sentinel

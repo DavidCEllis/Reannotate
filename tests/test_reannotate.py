@@ -522,3 +522,18 @@ class TestExtra(unittest.TestCase):
 
         self.assertIsInstance(__version__, str)
         self.assertIsInstance(__version_tuple__, tuple)
+
+
+class TestStringLiteral:
+    def test_string_literal(self):
+        # Manually stringified annotations don't get evaluated
+        class Example:
+            a: "int"
+            b: float
+            c: undefined  # Prevent caching of VALUE annotations
+
+        annos = get_deferred_annotations(Example)
+
+        assert annos['a'].evaluate() == "int"
+        assert annos['a'].evaluate(format=Format.STRING) == "int"  # Not double quoted
+        assert annos['b'].evaluate() is float

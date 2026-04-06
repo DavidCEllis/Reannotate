@@ -187,3 +187,53 @@ class TestDirectAnnotation:
 @patch("sys.modules", {})
 class TestDirectAnnotationNoTyping(TestDirectAnnotation):
     pass
+
+
+class TestGenericStrings:
+    def test_emulated_future(self):
+        # Emulate __future__ annotations
+        # It still makes sense for this to work even if they will all evaluate to strings
+        class Example:
+            pass
+
+        Example.__annotations__ = {'a': "list[int]", 'b': "float | int"}
+
+        annos = get_deferred_annotations(Example)
+        a_anno = annos['a']
+        b_anno = annos['b']
+
+        a_origin = get_origin(a_anno)
+        a_args = get_args(a_anno)
+
+        assert a_origin.evaluate() == "list"
+        assert a_args[0].evaluate() == "int"
+
+        b_origin = get_origin(b_anno)
+        b_args = get_args(b_anno)
+
+        assert b_origin.evaluate() is types.UnionType
+        assert b_args[0].evaluate() == "float"
+        assert b_args[1].evaluate() == "int"
+
+    def test_literal_strings(self):
+        # Literal strings should behave the same as __future__
+        class Example:
+            a: "list[int]"
+            b: "float | int"
+
+        annos = get_deferred_annotations(Example)
+        a_anno = annos['a']
+        b_anno = annos['b']
+
+        a_origin = get_origin(a_anno)
+        a_args = get_args(a_anno)
+
+        assert a_origin.evaluate() == "list"
+        assert a_args[0].evaluate() == "int"
+
+        b_origin = get_origin(b_anno)
+        b_args = get_args(b_anno)
+
+        assert b_origin.evaluate() is types.UnionType
+        assert b_args[0].evaluate() == "float"
+        assert b_args[1].evaluate() == "int"
