@@ -4,8 +4,8 @@ This library acts as an extension to the new deferred annotations that arrived a
 PEP-649/749 in Python 3.14.
 
 Its main purpose is to make it possible to manipulate PEP-649/749 annotations in order to
-recreate `__annotate__` functions that support all of the new annotations formats.
-It should be as simple to manipulate and change annotations to create new `__annotate__`
+recreate `__annotate__` functions that support all of the new annotations formats. It
+should be as simple to manipulate and change annotations to create new `__annotate__`
 functions with `reannotate` as it was to manipulate and create new `__annotations__` under
 older versions of Python.
 
@@ -95,6 +95,49 @@ print(call_annotate_function(new_annos, format=Format.FORWARDREF))
 {'a': <class 'int'>, 'b': list[ForwardRef('undefined', is_class=True, owner=<class '__main__.Example'>)]}
 ```
 
+### Handling Unions and Generics with forward references
+
+`reannotate` provides `get_origin` and `get_args` functions, analogous to those provided
+by `typing` that can get the origin and arguments of genericised annotations even if there
+are forward references.
+
+Unlike `typing` the objects will be returned in `DeferredAnnotation` format. This allows
+for some of them to be forward references.
+
+Note: This relies on the assumption that the objects in question are types, and as such
+`|` indicates a union
+
+```python
+from reannotate import get_deferred_annotations, get_origin, get_args
+
+class Example:
+    a: undefined | bytes | str
+    b: unknown[str]
+
+annos = get_deferred_annotations(Example)
+a_anno = annos['a']
+b_anno = annos['b']
+
+print(get_origin(a_anno))
+print(get_args(a_anno))
+print()
+
+print(get_origin(b_anno))
+print(get_args(b_anno))
+```
+
+```python
+DeferredAnnotation('typing.Union')
+(DeferredAnnotation('undefined'), DeferredAnnotation('bytes'), DeferredAnnotation('str'))
+
+DeferredAnnotation('unknown')
+(DeferredAnnotation('str'),)
+```
+
+The primary purpose of these functions is to allow for extracting arguments from generics to
+create new annotations. For example, using the argument to `InitVar` as the annotation for
+`__init__` in something like dataclasses.
+
 ## How does this differ from `Format.FORWARDREF`
 
 ### Resolution
@@ -131,8 +174,8 @@ to generate new `STRING` format annotations.
 
 ### A 'type' attribute on dataclass-like fields that evaluates
 
-With Python 3.14 annotations, dataclasses can now accept forward references without needing
-to use `__future__` annotations.
+With Python 3.14 annotations, dataclasses can now accept forward references without
+needing to use `__future__` annotations.
 
 Take for example a self referential class:
 
@@ -144,8 +187,8 @@ class Example:
     examples: list[Example]
 ```
 
-While this now works, the dataclass 'field' for 'examples' is fixed with the forward reference
-contained in the 'type' attribute.
+While this now works, the dataclass 'field' for 'examples' is fixed with the forward
+reference contained in the 'type' attribute.
 
 ```python
 examples_field = fields(Example)[0]
@@ -153,13 +196,14 @@ print(examples_field.type)
 ```
 
 Output:
+
 ```python
 list[ForwardRef('Example', is_class=True, owner=<class '__main__.Example'>)]
 ```
 
 Using `reannotate`, this can be avoided. Here is the same example but using
-[ducktools-classbuilder](https://github.com/DavidCEllis/ducktools-classbuilder)
-instead of `dataclasses`:
+[ducktools-classbuilder](https://github.com/DavidCEllis/ducktools-classbuilder) instead of
+`dataclasses`:
 
 ```python
 from ducktools.classbuilder.prefab import get_attributes, prefab
@@ -173,13 +217,14 @@ print(examples_attribute.type)
 ```
 
 Output:
+
 ```python
 list[__main__.Example]
 ```
 
 This is because internally, `ducktools-classbuilder` uses reannotate's
-`get_deferred_annotations` instead of `Format.FORWARDREF` and evaluates them
-only when `.type` is accessed.
+`get_deferred_annotations` instead of `Format.FORWARDREF` and evaluates them only when
+`.type` is accessed.
 
 ### Adding fields automatically to a dataclass
 
@@ -187,8 +232,8 @@ With the new annotations in Python 3.14 it is no longer always possible to retri
 `__annotations__`. To correctly handle inserting a field into a dataclass it is necessary
 to create a new `__annotate__` function.
 
-Using `get_deferred_annotations` and `ReAnnotate`, this can now be done in a similar fashion
-as it was possible prior to Python 3.14.
+Using `get_deferred_annotations` and `ReAnnotate`, this can now be done in a similar
+fashion as it was possible prior to Python 3.14.
 
 ```python
 from annotationlib import get_annotations, Format

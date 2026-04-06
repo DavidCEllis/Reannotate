@@ -30,7 +30,7 @@ from annotationlib import (  # type: ignore
 
 try:
     from _collections_abc import Callable
-except ImportError:
+except ImportError:  # pragma: no cover
     from collections.abc import Callable
 
 
@@ -105,6 +105,7 @@ class EvaluationContext:
         "_is_class",
         "_cells",
         "_type_params",
+        "_extra_names",  # Needed for ForwardRef evaluation in some cases
     )
 
     globals: dict[str, t.Any]
@@ -123,6 +124,7 @@ class EvaluationContext:
         is_class: bool = False,
         cells: Mapping[str, t.Any] | None = None,
         type_params: tuple[t.TypeVar | t.ParamSpec | t.TypeVarTuple, ...] | None = None,
+        extra_names: Mapping[str, t.Any] | None = None
     ):
         self.globals = globals
         self._locals = locals
@@ -130,6 +132,52 @@ class EvaluationContext:
         self._is_class = is_class
         self._cells = cells
         self._type_params = type_params
+        self._extra_names = extra_names
+
+    @classmethod
+    def _from_forwardref(cls, ref: ForwardRef) -> t.Self:
+        # Get the globals and locals contexts for reference evaluation
+        # The globals logic is from annotationlib and covers some additional cases that are uncovered here
+        owner = ref.__owner__
+
+        globals = None
+
+        if ref.__forward_module__ is not None:  # pragma: no cover
+            globals = getattr(
+                sys.modules.get(ref.__forward_module__, None), "__dict__", None
+            )
+        if globals is None:
+            globals = ref.__globals__
+        if globals is None:  # pragma: no cover
+            if isinstance(owner, type):
+                module_name = getattr(owner, "__module__", None)
+                if module_name:
+                    module = sys.modules.get(module_name, None)
+                    if module:
+                        globals = getattr(module, "__dict__", None)
+            elif isinstance(owner, types.ModuleType):
+                globals = getattr(owner, "__dict__", None)
+            elif callable(owner):
+                globals = getattr(owner, "__globals__", None)
+
+        # If we pass None to eval() below, the globals of this module are used.
+        if globals is None:  # pragma: no cover
+            globals = {}
+
+        # Convert a single `cell` into a dict
+        # The context may evaluate additional names
+        if isinstance(ref.__cell__, types.CellType):
+            cells = {ref.__forward_arg__: ref.__cell__}
+        else:
+            cells = ref.__cell__
+
+        return cls(
+            globals=globals,
+            owner=owner,
+            is_class=ref.__forward_is_class__,
+            cells=cells,
+            extra_names=ref.__extra_names__,
+        )
 
     def _compare_cells(self, other: EvaluationContext) -> bool:
         # Needed for `__eq__`
@@ -215,6 +263,8 @@ class EvaluationContext:
             )
 
         locals = dict(self.locals)
+        if self._extra_names is not None:
+            locals.update(self._extra_names)
         if extra_names is not None:
             locals.update(extra_names)
 
@@ -255,12 +305,23 @@ class DeferredAnnotation:
     return type_repr of the object.
     """
 
-    __slots__ = ("_obj", "_evaluation_context", "_as_str", "_resolved_value")
+    __slots__ = (
+        "_obj",
+        "_evaluation_context",
+        "_as_str",
+        "_resolved_value",
+        "_origin",
+        "_args",
+    )
 
     _obj: object
     _evaluation_context: EvaluationContext | None
     _as_str: str | None
     _resolved_value: _Sentinel | t.Any
+
+    # Origin and args for generics
+    _origin: _Sentinel | DeferredAnnotation
+    _args: None | tuple[DeferredAnnotation, ...]
 
     def __init__(
         self,
@@ -275,13 +336,16 @@ class DeferredAnnotation:
         self._as_str = None
         self._resolved_value = resolved_value
 
+        self._origin = _sentinel
+        self._args = None
+
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, DeferredAnnotation):
             return NotImplemented
 
-        # AST objects need to be compared as strings for equality
-        self_obj = self._obj if not isinstance(self._obj, ast.AST) else self.as_str
-        other_obj = other._obj if not isinstance(other._obj, ast.AST) else other.as_str
+        # AST expressions need to be compared as strings for equality
+        self_obj = self._obj if not isinstance(self._obj, ast.expr) else self.as_str
+        other_obj = other._obj if not isinstance(other._obj, ast.expr) else other.as_str
 
         # Compare property to correctly handle ForwardRef cases
         return (
@@ -303,7 +367,7 @@ class DeferredAnnotation:
                 self._as_str = self._obj
             elif isinstance(self._obj, ForwardRef):
                 self._as_str = self._obj.__forward_arg__
-            elif isinstance(self._obj, ast.AST):
+            elif isinstance(self._obj, ast.expr):
                 self._as_str = ast.unparse(self._obj)
             else:
                 self._as_str = type_repr(self._obj)
@@ -311,6 +375,8 @@ class DeferredAnnotation:
 
     @property
     def evaluation_context(self) -> EvaluationContext | None:
+        if self._evaluation_context is None and isinstance(self._obj, ForwardRef):
+            self._evaluation_context = EvaluationContext._from_forwardref(self._obj)
         return self._evaluation_context
 
     @_overload
@@ -355,7 +421,7 @@ class DeferredAnnotation:
                 # fmt: off
                 if (
                     (context := self.evaluation_context)
-                    and (isinstance(self._obj, (str, ast.AST)))
+                    and (isinstance(self._obj, (str, ast.expr)))
                 ):
                     #fmt: on
                     try:
@@ -384,7 +450,7 @@ class DeferredAnnotation:
 
                     return ref
 
-                elif isinstance(self._obj, ast.AST):
+                elif isinstance(self._obj, ast.expr):
                     # AST object with no evaluation context - return as string
                     self._resolved_value = self.as_str
                     return self.as_str
@@ -397,20 +463,49 @@ class DeferredAnnotation:
                 raise NotImplementedError(format)
 
     @property
-    def origin_and_args(
+    def __origin__(self) -> DeferredAnnotation | None:
+        if self._origin is _sentinel:
+            self._origin, self._args = self._get_origin_and_args()
+        return self._origin
+
+    @property
+    def __args__(self) -> tuple[DeferredAnnotation, ...]:
+        if self._args is None:
+            self._origin, self._args = self._get_origin_and_args()
+        return self._args
+
+    def _get_origin_and_args(
         self,
     ) -> tuple[None | DeferredAnnotation, tuple[DeferredAnnotation, ...]]:
-        if isinstance(self, ForwardRef):
-            # Need to revive the evaluationcontext logic
-            raise NotImplementedError("TODO")
+        if self.evaluation_context and isinstance(
+            self._obj, (str, ast.expr, ForwardRef)
+        ):
+            if isinstance(self._obj, ast.expr):
+                ast_expr = self._obj
+            elif isinstance(self._obj, ForwardRef):
+                # Need to revive the evaluationcontext logic
+                ast_expr = self._obj.__ast_node__
+                if ast_expr is None:
+                    ast_expr = compile(
+                        self._obj.__forward_arg__,
+                        "<annotation>",
+                        "eval",
+                        ast.PyCF_ONLY_AST,
+                    ).body
+            else:
+                ast_expr = compile(
+                    self._obj, "<annotation>", "eval", ast.PyCF_ONLY_AST
+                ).body
 
-        if self.evaluation_context:
-            # AST Parsing to extract annotations
-            raise NotImplementedError("TODO")
+            origin, args = _extract_origin_and_args_from_ast(
+                ast_expr, self.evaluation_context
+            )
         else:
             # Use typing directly if it available
             if typing := sys.modules.get("typing"):
-                origin = DeferredAnnotation(typing.get_origin(self._obj))
+                origin = typing.get_origin(self._obj)
+                if origin is not None:
+                    origin = DeferredAnnotation(origin)
                 args = tuple(
                     DeferredAnnotation(arg) for arg in typing.get_args(self._obj)
                 )
@@ -418,19 +513,15 @@ class DeferredAnnotation:
                 # Potentially standard generics or no origin
                 try:
                     base_origin = getattr(self._obj, "__origin__")
+                    base_args = getattr(self._obj, "__args__")
                 except AttributeError:
                     return None, ()
 
                 origin = DeferredAnnotation(base_origin)
 
-                try:
-                    base_args = getattr(self._obj, "__args__")
-                except AttributeError:
-                    return origin, ()
-
                 # Special case - unflatten callable args if not a ParamSpec
                 # Being a Concatenate alias would require typing to be imported
-                unflatten_args = origin is Callable and not (
+                unflatten_args = base_origin is Callable and not (
                     len(base_args) == 2
                     and (
                         base_args[0] is ...
@@ -438,7 +529,7 @@ class DeferredAnnotation:
                     )
                 )
                 if unflatten_args:
-                    base_args = (base_args[:-1], base_args[-1])
+                    base_args = (list(base_args[:-1]), base_args[-1])
 
                 args = tuple(DeferredAnnotation(arg) for arg in base_args)
 
@@ -674,3 +765,54 @@ def get_deferred_annotations(
         return {}
 
     raise TypeError(f"{obj!r} does not have annotations")
+
+
+# Typing Helpers
+def _unwrap_union_syntax(expr: ast.BinOp) -> list[ast.expr]:
+    args = []
+    for elt in (expr.left, expr.right):
+        if isinstance(elt, ast.BinOp) and isinstance(elt.op, ast.BitOr):
+            args.extend(_unwrap_union_syntax(elt))
+        else:
+            args.append(elt)
+    return args
+
+
+def _extract_origin_and_args_from_ast(
+    ast_expr: ast.expr,
+    context: EvaluationContext,
+) -> tuple[None | DeferredAnnotation, tuple[DeferredAnnotation, ...]]:
+
+    origin: None | DeferredAnnotation = None
+    args: tuple[DeferredAnnotation] = ()
+
+    if isinstance(ast_expr, ast.Subscript):
+        # Handle subscript syntax
+        ast_origin = ast_expr.value
+        if isinstance(ast_expr.slice, ast.Tuple):
+            ast_args = ast_expr.slice.elts
+        else:
+            ast_args = [ast_expr.slice]
+
+        origin = DeferredAnnotation(ast_origin, evaluation_context=context)
+        args = tuple(
+            DeferredAnnotation(arg, evaluation_context=context) for arg in ast_args
+        )
+
+    elif isinstance(ast_expr, ast.BinOp) and isinstance(ast_expr.op, ast.BitOr):
+        # Handle union syntax
+        ast_args = _unwrap_union_syntax(ast_expr)
+        origin = DeferredAnnotation(types.UnionType)
+        args = tuple(
+            DeferredAnnotation(arg, evaluation_context=context) for arg in ast_args
+        )
+
+    return origin, args
+
+
+def get_origin(anno: DeferredAnnotation) -> DeferredAnnotation | None:
+    return anno.__origin__
+
+
+def get_args(anno: DeferredAnnotation) -> tuple[DeferredAnnotation, ...]:
+    return anno.__args__
