@@ -8,7 +8,13 @@ It also includes a helper `ReAnnotate` class to be used to act as the new
 `__annotate__` callable on objects.
 """
 
-__lazy_modules__ = ["reannotate._version", "collections.abc", "typing"]
+__lazy_modules__ = [
+    "reannotate._ast_tools",
+    "reannotate._version",
+    "collections.abc",
+    "copy",
+    "typing",
+]
 
 import ast
 import builtins
@@ -34,7 +40,9 @@ except ImportError:  # pragma: no cover
     from collections.abc import Callable
 
 
+from ._ast_tools import NameReplacer
 from ._version import __version__ as __version__, __version_tuple__ as __version_tuple__
+
 
 # I want this to be well typed, but I **really** don't want to waste time
 # importing modules purely for typing at runtime
@@ -361,20 +369,53 @@ class DeferredAnnotation:
         return self._resolved_value is not _sentinel
 
     @property
+    def _raw_string(self) -> str:
+        # Get the un-fixed string
+        # This doesn't replace any extra_names
+        if isinstance(self._obj, ast.expr):
+            s = ast.unparse(self._obj)
+        elif isinstance(self._obj, ForwardRef):
+            s = self._obj.__forward_arg__
+        elif isinstance(self._obj, str):
+            s = self._obj
+        else:
+            s = type_repr(self._obj)
+        return s
+
+    @property
     def as_str(self) -> str:
+        """
+        Get a resolved representation of the annotation as a string
+        This includes replacing any 'extra_names' from forward references
+
+        :return: annotation as string
+        """
         if self._as_str is None:
-            if isinstance(self._obj, str):
-                self._as_str = self._obj
-            elif isinstance(self._obj, ForwardRef):
-                self._as_str = self._obj.__forward_arg__
-            elif isinstance(self._obj, ast.expr):
-                self._as_str = ast.unparse(self._obj)
-            else:
-                self._as_str = type_repr(self._obj)
+            self._as_str = self._raw_string
+
+            # Replace any extra names for standard evaluation
+            if self.evaluation_context and (names := self.evaluation_context._extra_names):
+                # Skip AST work if the string is an identifier
+                if self._raw_string.isidentifier():
+                    if name_obj := names.get(self._raw_string):
+                        self._as_str = type_repr(name_obj)
+                else:
+                    visitor = NameReplacer(names)
+                    ast_expr = ast.parse(self._raw_string, mode="eval").body
+                    node = visitor.visit(ast_expr)
+                    self._as_str = ast.unparse(node)
+
         return self._as_str
 
     @property
     def evaluation_context(self) -> EvaluationContext | None:
+        """
+        Get the associated context which the annotation will use for evaluation
+        This will be None if this was created from a resolved object or string
+        annotation.
+
+        :return: The context object, or None
+        """
         if self._evaluation_context is None and isinstance(self._obj, ForwardRef):
             self._evaluation_context = EvaluationContext._from_forwardref(self._obj)
         return self._evaluation_context
@@ -398,6 +439,15 @@ class DeferredAnnotation:
         format: Format = Format.VALUE,
         extra_names: dict[str, t.Any] | None = None,
     ) -> t.Any | str:
+        """
+        Attempt to evaluate the annotation
+
+        :param format: A Format enum value from annotationlib,
+                       defaults to Format.VALUE
+        :param extra_names: A dictionary of additional names to use
+                            when resolving or None, defaults to None
+        :return: The annotation evaluated in the provided format
+        """
         match format:
             case Format.VALUE | Format.FORWARDREF:
                 if self._resolved_value is not _sentinel:
@@ -440,13 +490,14 @@ class DeferredAnnotation:
 
                     # Try to construct a forwardref
                     ref = ForwardRef(
-                        self.as_str,
+                        self._raw_string,  # This needs to have the original names
                         owner=context._owner,
                         is_class=context._is_class,
                     )
-                    # Patch in cell/globals
+                    # Patch in cell/globals/extra names
                     ref.__globals__ = context.globals  # type: ignore
                     ref.__cell__ = context._cells  # type: ignore
+                    ref.__extra_names__ = context._extra_names  # type: ignore
 
                     return ref
 
@@ -483,16 +534,9 @@ class DeferredAnnotation:
             elif isinstance(self._obj, ForwardRef):
                 ast_expr = self._obj.__ast_node__
                 if ast_expr is None:
-                    ast_expr = compile(
-                        self._obj.__forward_arg__,
-                        "<annotation>",
-                        "eval",
-                        ast.PyCF_ONLY_AST,
-                    ).body
+                    ast_expr = ast.parse(self._obj.__forward_arg__, mode="eval").body
             else:
-                ast_expr = compile(
-                    self._obj, "<annotation>", "eval", ast.PyCF_ONLY_AST
-                ).body
+                ast_expr = ast.parse(self._obj, mode="eval").body
 
             origin, args = _extract_origin_and_args_from_ast(
                 ast_expr, self.evaluation_context

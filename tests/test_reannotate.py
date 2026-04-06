@@ -1,4 +1,3 @@
-from packaging.markers import UndefinedComparison
 import ast
 import typing
 import unittest
