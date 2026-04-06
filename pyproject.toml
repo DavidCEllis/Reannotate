@@ -33,6 +33,7 @@ dev = [
     "pytest>=8.4",
     "pytest-cov>=6.1",
     "coverage-simple-excludes>=1.1.1",
+    "mypy>=1.20.0",
 ]
 
 [tool.hatch.version]
