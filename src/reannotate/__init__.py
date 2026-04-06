@@ -17,16 +17,22 @@ import types
 
 # This requires the use of some private functions and classes from annotationlib
 # The alternative would be vendoring their implementations.
-from annotationlib import (
-    _build_closure,  # type: ignore
-    _get_dunder_annotations,  # type: ignore
-    _stringify_single,  # type: ignore
-    _Stringifier,  # type: ignore
-    _StringifierDict,  # type: ignore
+from annotationlib import (  # type: ignore
+    _build_closure,
+    _get_dunder_annotations,
+    _stringify_single,
+    _Stringifier,
+    _StringifierDict,
     Format,
     ForwardRef,
     type_repr,
 )
+
+try:
+    from _collections_abc import Callable
+except ImportError:
+    from collections.abc import Callable
+
 
 from ._version import __version__ as __version__, __version_tuple__ as __version_tuple__
 
@@ -59,12 +65,21 @@ else:  # cover-req-lt3.15
         # fmt: on
 
 if TYPE_CHECKING:
-    from typing import overload as _overload
+    from typing import (
+        ParamSpec as _ParamSpec,
+        overload as _overload,
+    )
 else:
     # Unlike the real overload, this does not register functions
     # Just return None so the function is unusable
     def _overload(func):
         return None
+
+    # _ParamSpec appears to be from typing but isn't really
+    # Obtain it without importing typing
+    def _f[**P](spec: P): ...
+
+    _ParamSpec = type(_f.__annotations__["spec"])
 
 
 class _Sentinel:
@@ -148,7 +163,7 @@ class EvaluationContext:
     @property
     def locals(self) -> dict[str, t.Any]:
         if self._locals is None:
-            locals = {}
+            locals: dict[str, t.Any] = {}
             if isinstance(self._owner, type):
                 locals.update(vars(self._owner))
         else:
@@ -381,6 +396,54 @@ class DeferredAnnotation:
             case _:
                 raise NotImplementedError(format)
 
+    @property
+    def origin_and_args(
+        self,
+    ) -> tuple[None | DeferredAnnotation, tuple[DeferredAnnotation, ...]]:
+        if isinstance(self, ForwardRef):
+            # Need to revive the evaluationcontext logic
+            raise NotImplementedError("TODO")
+
+        if self.evaluation_context:
+            # AST Parsing to extract annotations
+            raise NotImplementedError("TODO")
+        else:
+            # Use typing directly if it available
+            if typing := sys.modules.get("typing"):
+                origin = DeferredAnnotation(typing.get_origin(self._obj))
+                args = tuple(
+                    DeferredAnnotation(arg) for arg in typing.get_args(self._obj)
+                )
+            else:
+                # Potentially standard generics or no origin
+                try:
+                    base_origin = getattr(self._obj, "__origin__")
+                except AttributeError:
+                    return None, ()
+
+                origin = DeferredAnnotation(base_origin)
+
+                try:
+                    base_args = getattr(self._obj, "__args__")
+                except AttributeError:
+                    return origin, ()
+
+                # Special case - unflatten callable args if not a ParamSpec
+                # Being a Concatenate alias would require typing to be imported
+                unflatten_args = origin is Callable and not (
+                    len(base_args) == 2
+                    and (
+                        base_args[0] is ...
+                        or isinstance(base_args[0], (list, tuple, _ParamSpec))
+                    )
+                )
+                if unflatten_args:
+                    base_args = (base_args[:-1], base_args[-1])
+
+                args = tuple(DeferredAnnotation(arg) for arg in base_args)
+
+        return origin, args
+
 
 class ReAnnotate:
     """
@@ -412,12 +475,13 @@ class ReAnnotate:
         return dict(self._deferred_annotations)
 
     @_overload
-    def __call__(self, format: t.Literal[Format.STRING]) -> dict[str, str]: ...
+    def __call__(self, format: t.Literal[Format.STRING], /) -> dict[str, str]: ...
 
     @_overload
     def __call__(
         self,
         format: Format,
+        /,
     ) -> dict[str, t.Any]: ...
 
     def __call__(self, format: Format, /) -> dict[str, t.Any]:
@@ -482,7 +546,7 @@ def call_annotate_deferred(
     except AttributeError:
         pass
 
-    value_annotations = _sentinel
+    value_annotations: _Sentinel | dict[str, t.Any] = _sentinel
 
     if not skip_globals_check:
         try:
