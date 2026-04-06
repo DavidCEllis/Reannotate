@@ -170,6 +170,49 @@ evaluating the reference inside the `GenericAlias` for `list`.
 `DeferredAnnotation` also keeps the full string for the annotation and as such can be used
 to generate new `STRING` format annotations.
 
+### Better string representations of unions
+
+If a `ForwardRef` has to represent a union with a forward reference, this can lead to
+internal names showing up in the repr and in any future attempt to resolve annotations
+as strings.
+
+Deferred annotations don't suffer from this issue and will also clean up the names
+from forward references if they need to be constructed from a ForwardRef.
+
+```python
+from annotationlib import get_annotations, Format
+from reannotate import get_deferred_annotations, DeferredAnnotation
+
+class Example:
+    a: ref | str | bytes
+
+a_anno = get_annotations(Example, format=Format.FORWARDREF)['a']
+print(f"{a_anno = }")
+print(f"Evaluated as string: {a_anno.evaluate(format=Format.STRING)}")
+print()
+
+a_deferred = get_deferred_annotations(Example)['a']
+print(f"{a_deferred = }")
+print(f"Evaluated as string: {a_deferred.evaluate(format=Format.STRING)}")
+print()
+
+# Create a deferred annotation from the ForwardRef
+deferred_from_ref = DeferredAnnotation(a_anno)
+print(f"{deferred_from_ref = }")
+print(f"Evaluated as string: {deferred_from_ref.evaluate(format=Format.STRING)}")
+```
+
+```
+a_anno = ForwardRef('ref | __annotationlib_name_1__ | __annotationlib_name_2__', is_class=True, owner=<class '__main__.Example'>)
+Evaluated as string: ref | __annotationlib_name_1__ | __annotationlib_name_2__
+
+a_deferred = DeferredAnnotation('ref | str | bytes')
+Evaluated as string: ref | str | bytes
+
+deferred_from_ref = DeferredAnnotation('ref | str | bytes')
+Evaluated as string: ref | str | bytes
+```
+
 ## Use case examples
 
 ### A 'type' attribute on dataclass-like fields that evaluates
