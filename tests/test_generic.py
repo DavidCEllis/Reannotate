@@ -108,6 +108,9 @@ class TestAnnotationForwardRef:
         assert args[1].evaluate() is int
         assert args[2].evaluate() is float
 
+        assert args[1].evaluate(format=Format.STRING) == "int"
+        assert a_anno.evaluate(format=Format.STRING) == "unknown | int | float"
+
     def test_filled_cell(self):
         # Test getting evaluation context from a forwardref with cell values
         def f():
