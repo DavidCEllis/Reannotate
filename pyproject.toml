@@ -74,6 +74,7 @@ exclude_also = [
 [tool.ty.rules]
 unused-type-ignore-comment = "ignore" # Not all type ignore comments are for ty
 unresolved-attribute = "ignore"
+unresolved-import = "ignore"
 
 [tool.ruff]
 extend-exclude = ["perf/*.py"]

@@ -92,7 +92,7 @@ else:
 
 class _Sentinel:
     # Sentinel object for the case where None is valid
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "<Sentinel Object>"
 
 
@@ -328,7 +328,7 @@ class DeferredAnnotation:
     _resolved_value: _Sentinel | t.Any
 
     # Origin and args for generics
-    _origin: _Sentinel | DeferredAnnotation
+    _origin: _Sentinel | None | DeferredAnnotation
     _args: None | tuple[DeferredAnnotation, ...]
 
     def __init__(
@@ -515,7 +515,7 @@ class DeferredAnnotation:
 
     @property
     def __origin__(self) -> DeferredAnnotation | None:
-        if self._origin is _sentinel:
+        if isinstance(self._origin, _Sentinel):
             self._origin, self._args = self._get_origin_and_args()
         return self._origin
 
@@ -532,7 +532,7 @@ class DeferredAnnotation:
             if isinstance(self._obj, ast.expr):
                 ast_expr = self._obj
             elif isinstance(self._obj, ForwardRef):
-                ast_expr = self._obj.__ast_node__
+                ast_expr = self._obj.__ast_node__  # type: ignore
                 if ast_expr is None:
                     ast_expr = ast.parse(self._obj.__forward_arg__, mode="eval").body
             else:
@@ -825,11 +825,11 @@ def _unwrap_union_syntax(expr: ast.BinOp) -> list[ast.expr]:
 
 def _extract_origin_and_args_from_ast(
     ast_expr: ast.expr,
-    context: EvaluationContext,
+    context: EvaluationContext | None,
 ) -> tuple[None | DeferredAnnotation, tuple[DeferredAnnotation, ...]]:
 
     origin: None | DeferredAnnotation = None
-    args: tuple[DeferredAnnotation] = ()
+    args: tuple[DeferredAnnotation, ...] = ()
 
     if isinstance(ast_expr, ast.Subscript):
         # Handle subscript syntax
@@ -841,7 +841,8 @@ def _extract_origin_and_args_from_ast(
 
         origin = DeferredAnnotation(ast_origin, evaluation_context=context)
         args = tuple(
-            DeferredAnnotation(arg, evaluation_context=context) for arg in ast_args
+            DeferredAnnotation(arg, evaluation_context=context)
+            for arg in ast_args
         )
 
     elif isinstance(ast_expr, ast.BinOp) and isinstance(ast_expr.op, ast.BitOr):
@@ -849,7 +850,8 @@ def _extract_origin_and_args_from_ast(
         ast_args = _unwrap_union_syntax(ast_expr)
         origin = DeferredAnnotation(types.UnionType)
         args = tuple(
-            DeferredAnnotation(arg, evaluation_context=context) for arg in ast_args
+            DeferredAnnotation(arg, evaluation_context=context)
+            for arg in ast_args
         )
 
     return origin, args
