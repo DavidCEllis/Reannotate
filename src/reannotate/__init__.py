@@ -813,11 +813,11 @@ def get_deferred_annotations(
 
 
 # Typing Helpers
-def _unwrap_union_syntax(expr: ast.BinOp) -> list[ast.expr]:
+def _unwrap_typing_syntax(expr: ast.BinOp, op: type[ast.operator]) -> list[ast.expr]:
     args = []
     for elt in (expr.left, expr.right):
-        if isinstance(elt, ast.BinOp) and isinstance(elt.op, ast.BitOr):
-            args.extend(_unwrap_union_syntax(elt))
+        if isinstance(elt, ast.BinOp) and isinstance(elt.op, op):
+            args.extend(_unwrap_typing_syntax(elt, op))
         else:
             args.append(elt)
     return args
@@ -845,14 +845,22 @@ def _extract_origin_and_args_from_ast(
             for arg in ast_args
         )
 
-    elif isinstance(ast_expr, ast.BinOp) and isinstance(ast_expr.op, ast.BitOr):
-        # Handle union syntax
-        ast_args = _unwrap_union_syntax(ast_expr)
-        origin = DeferredAnnotation(types.UnionType)
-        args = tuple(
-            DeferredAnnotation(arg, evaluation_context=context)
-            for arg in ast_args
-        )
+    elif isinstance(ast_expr, ast.BinOp):
+        if isinstance(ast_expr.op, ast.BitOr):
+            # Handle union syntax
+            ast_args = _unwrap_typing_syntax(ast_expr, ast.BitOr)
+            origin = DeferredAnnotation(types.UnionType)
+            args = tuple(
+                DeferredAnnotation(arg, evaluation_context=context)
+                for arg in ast_args
+            )
+        elif isinstance(ast_expr.op, ast.MatMult):
+            ast_args = _unwrap_typing_syntax(ast_expr, ast.MatMult)
+            origin = DeferredAnnotation(t.Annotated)
+            args = tuple(
+                DeferredAnnotation(arg, evaluation_context=context)
+                for arg in ast_args
+            )
 
     return origin, args
 
