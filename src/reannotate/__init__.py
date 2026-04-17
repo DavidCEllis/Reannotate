@@ -397,7 +397,7 @@ class DeferredAnnotation:
             if self.evaluation_context and (names := self.evaluation_context._extra_names):
                 # Skip AST work if the string is an identifier
                 if self._raw_string.isidentifier():
-                    if name_obj := names.get(self._raw_string):
+                    if (name_obj := names.get(self._raw_string, _sentinel)) is not _sentinel:
                         self._as_str = type_repr(name_obj)
                 else:
                     visitor = NameReplacer(names)

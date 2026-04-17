@@ -9,6 +9,15 @@ from reannotate import get_args, get_origin, get_deferred_annotations, DeferredA
 from unittest.mock import patch
 
 
+# Falsey Metaclass for union test
+class FalseyMeta(type):
+    def __bool__(self):
+        return False
+
+class FalseyType(metaclass=FalseyMeta):
+    pass
+
+
 class TestGenericAnnotations:
     def test_get_origin(self):
         # Basic origin test for deferred annotations
@@ -110,6 +119,17 @@ class TestAnnotationForwardRef:
 
         assert args[1].evaluate(format=Format.STRING) == "int"
         assert a_anno.evaluate(format=Format.STRING) == "unknown | int | float"
+
+    def test_union_annotation_falsey(self):
+        def f(a: unknown | FalseyType): ...
+
+        a_fr = get_annotations(f, format=Format.FORWARDREF)['a']
+        a_anno = DeferredAnnotation(a_fr)
+
+        assert a_anno.evaluate(format=Format.STRING) == "unknown | test_generic.FalseyType"
+
+        args = get_args(a_anno)
+        assert args[1].evaluate() is FalseyType
 
     def test_filled_cell(self):
         # Test getting evaluation context from a forwardref with cell values
