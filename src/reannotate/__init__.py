@@ -23,7 +23,7 @@ import types
 
 # This requires the use of some private functions and classes from annotationlib
 # The alternative would be vendoring their implementations.
-from annotationlib import (  # type: ignore
+from annotationlib import (
     _build_closure,
     _get_dunder_annotations,
     _stringify_single,
@@ -53,25 +53,9 @@ if sys.version_info >= (3, 15):  # cover-req-ge3.15
 else:  # cover-req-lt3.15
     # Hacks for imports prior to Python 3.15
     from _collections_abc import Callable as Callable, Mapping as Mapping
+    from ._lazy_import_314 import typing as t
 
-    if TYPE_CHECKING:
-        import typing as t
-    else:
-        # Hack lazy import for 3.14
-        t = sys.modules.get("typing")
-        # fmt: off
-        if t is None:  # pragma: no cover
-            class _LazyTyping:
-                def __getattr__(self, name):
-                    global t
-                    import typing
-
-                    t = typing
-                    return getattr(t, name)
-            t = _LazyTyping()
-            del _LazyTyping
-        # fmt: on
-
+# These objects from "typing" are used at runtime
 if TYPE_CHECKING:
     from typing import (
         ParamSpec as _ParamSpec,
@@ -90,6 +74,8 @@ else:
     _ParamSpec = type(_f.__annotations__["spec"])
 
 
+# I would like to use a new-style sentinel here for 3.15,
+# but the type checker doesn't understand them yet.
 class _Sentinel:
     # Sentinel object for the case where None is valid
     def __repr__(self) -> str:
@@ -495,9 +481,9 @@ class DeferredAnnotation:
                         is_class=context._is_class,
                     )
                     # Patch in cell/globals/extra names
-                    ref.__globals__ = context.globals  # type: ignore
-                    ref.__cell__ = context._cells  # type: ignore
-                    ref.__extra_names__ = context._extra_names  # type: ignore
+                    ref.__globals__ = context.globals
+                    ref.__cell__ = context._cells
+                    ref.__extra_names__ = context._extra_names
 
                     return ref
 
@@ -532,7 +518,7 @@ class DeferredAnnotation:
             if isinstance(self._obj, ast.expr):
                 ast_expr = self._obj
             elif isinstance(self._obj, ForwardRef):
-                ast_expr = self._obj.__ast_node__  # type: ignore
+                ast_expr = self._obj.__ast_node__
                 if ast_expr is None:
                     ast_expr = ast.parse(self._obj.__forward_arg__, mode="eval").body
             else:
@@ -632,6 +618,16 @@ class ReAnnotate:
 
 @_overload
 def call_annotate_deferred(
+    annotate: ReAnnotate,
+    *,
+    owner: object = ...,
+    skip_globals_check: bool = ...,
+    _is_evaluate: t.Literal[False] = ...,
+) -> dict[str, DeferredAnnotation]: ...
+
+
+@_overload
+def call_annotate_deferred(
     annotate: Callable[[Format], t.Any],
     *,
     owner: object = ...,
@@ -651,7 +647,7 @@ def call_annotate_deferred(
 
 
 def call_annotate_deferred(
-    annotate: Callable[[Format], dict[str, t.Any]] | Callable[[Format], t.Any],
+    annotate: ReAnnotate |  Callable[[Format], dict[str, t.Any]] | Callable[[Format], t.Any],
     *,
     owner: object = None,
     skip_globals_check: bool = False,
@@ -674,7 +670,7 @@ def call_annotate_deferred(
     """
 
     try:
-        return annotate.deferred_annotations  # type: ignore
+        return annotate.deferred_annotations  # type: ignore[union-attr]
     except AttributeError:
         pass
 
@@ -843,7 +839,7 @@ def _extract_origin_and_args_from_ast(
         args = tuple(
             DeferredAnnotation(arg, evaluation_context=context)
             for arg in ast_args
-        )
+        )  # fmt: skip
 
     elif isinstance(ast_expr, ast.BinOp) and isinstance(ast_expr.op, ast.BitOr):
         # Handle union syntax
@@ -852,7 +848,7 @@ def _extract_origin_and_args_from_ast(
         args = tuple(
             DeferredAnnotation(arg, evaluation_context=context)
             for arg in ast_args
-        )
+        )  # fmt: skip
 
     return origin, args
 

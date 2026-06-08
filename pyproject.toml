@@ -62,6 +62,7 @@ testpaths = [
 
 [tool.coverage.run]
 plugins = ["coverage_simple_excludes"]
+omit = ["_lazy_import_314.py"]
 
 [tool.coverage.report]
 # Exclude vendored code
@@ -70,10 +71,18 @@ exclude_also = [
     "def __repr__",
 ]
 
+# Type checker excludes
+# We use a lot of private modules and attributes
 [tool.ty.rules]
-unused-type-ignore-comment = "ignore" # Not all type ignore comments are for ty
 unresolved-attribute = "ignore"
 unresolved-import = "ignore"
+
+[tool.mypy]
+disable_error_code = "attr-defined"
+
+[tool.pyright]
+typeCheckingMode = "standard"
+reportAttributeAccessIssue = false
 
 [tool.ruff]
 extend-exclude = ["perf/*.py"]
