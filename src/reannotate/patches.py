@@ -14,6 +14,7 @@ from . import get_deferred_annotations, DeferredAnnotation
 
 __all__ = ["signature"]
 
+TYPE_CHECKING = False
 
 type _IntrospectableCallable = Callable[..., t.Any]
 
@@ -23,7 +24,7 @@ def _false_get_annotations(obj: t.Any, **kwargs) -> dict[str, DeferredAnnotation
     return get_deferred_annotations(obj)
 
 
-patch_dict = {
+patch_dict: dict[str, Callable] = {
     "get_annotations": _false_get_annotations,
 }
 
@@ -44,6 +45,7 @@ def _get_patched_function(
     patched_globs[func.__name__] = new_func
     patch_dict[func.__name__] = new_func
     return new_func
+
 
 # Patch the relevant inspect functions.
 # _signature_from_function is used by _signature_from_callable

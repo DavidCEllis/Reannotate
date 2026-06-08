@@ -21,16 +21,17 @@ class FalseyType(metaclass=FalseyMeta):
 class TestGenericAnnotations:
     def test_get_origin(self):
         # Basic origin test for deferred annotations
-        def f(a: list[str, int]): ...
+        def f(a: list[str | int]): ...
 
         a_anno = get_deferred_annotations(f)['a']
         origin = get_origin(a_anno)
 
+        assert origin is not None
         assert origin.evaluate() is list
 
     def test_get_args(self):
         # Basic args test for deferred annotations
-        def f(a: list[str, int]): ...
+        def f(a: dict[str, int]): ...
 
         a_anno = get_deferred_annotations(f)['a']
 
@@ -53,7 +54,9 @@ class TestGenericAnnotations:
 
         a_anno = get_deferred_annotations(f)['a']
 
-        assert get_origin(a_anno).evaluate() is types.UnionType
+        origin = get_origin(a_anno)
+        assert origin is not None
+        assert origin.evaluate() is types.UnionType
 
         args = get_args(a_anno)
         assert args[0].evaluate() is int
@@ -65,7 +68,9 @@ class TestGenericAnnotations:
 
         a_anno = get_deferred_annotations(f)['a']
 
-        assert get_origin(a_anno).evaluate() is types.UnionType
+        origin = get_origin(a_anno)
+        assert origin is not None
+        assert origin.evaluate() is types.UnionType
 
         args = get_args(a_anno)
         assert args[0].evaluate() is int
@@ -77,41 +82,47 @@ class TestGenericAnnotations:
 class TestAnnotationForwardRef:
     # Test evaluating from a ForwardRef
     def test_get_origin(self):
-        def f(a: a[str]): ...
+        def f(a: a[str]): ...  # type: ignore
 
         a_fr = get_annotations(f, format=Format.FORWARDREF)['a']
         a_anno = DeferredAnnotation(a_fr)
 
-        assert get_origin(a_anno).as_str == 'a'
+        origin = get_origin(a_anno)
+        assert origin is not None
+        assert origin.as_str == 'a'
         assert get_args(a_anno)[0].evaluate() is str
 
     def test_get_no_origin_args(self):
-        def f(a: a): ...
+        def f(a: a): ...  # type: ignore
 
         a_fr = get_annotations(f, format=Format.FORWARDREF)['a']
         a_anno = DeferredAnnotation(a_fr)
 
-        assert get_origin(a_anno) == None
+        assert get_origin(a_anno) is None
         assert get_args(a_anno) == ()
 
     def test_get_no_origin_cls(self):
         class Example:
-            a: a[str]
+            a: a[str]  # type: ignore
 
         a_fr = get_annotations(Example, format=Format.FORWARDREF)['a']
         a_anno = DeferredAnnotation(a_fr)
 
-        assert get_origin(a_anno).as_str == 'a'
+        origin = get_origin(a_anno)
+        assert origin is not None
+        assert origin.as_str == 'a'
         assert get_args(a_anno)[0].evaluate() is str
 
     def test_union_annotation(self):
         # Put a forwardref first so the whole annotation is a ForwardRef
-        def f(a: unknown | int | float): ...
+        def f(a: unknown | int | float): ...  # type: ignore
 
         a_fr = get_annotations(f, format=Format.FORWARDREF)['a']
         a_anno = DeferredAnnotation(a_fr)
 
-        assert get_origin(a_anno).evaluate() is types.UnionType
+        origin = get_origin(a_anno)
+        assert origin is not None
+        assert origin.evaluate() is types.UnionType
 
         args = get_args(a_anno)
         assert args[1].evaluate() is int
@@ -121,7 +132,7 @@ class TestAnnotationForwardRef:
         assert a_anno.evaluate(format=Format.STRING) == "unknown | int | float"
 
     def test_union_annotation_falsey(self):
-        def f(a: unknown | FalseyType): ...
+        def f(a: unknown | FalseyType): ...  # type: ignore
 
         a_fr = get_annotations(f, format=Format.FORWARDREF)['a']
         a_anno = DeferredAnnotation(a_fr)
@@ -134,8 +145,8 @@ class TestAnnotationForwardRef:
     def test_filled_cell(self):
         # Test getting evaluation context from a forwardref with cell values
         def f():
-            def g(a: a): ...
-            def h(a: a[b]): ...
+            def g(a: a): ...  # type: ignore
+            def h(a: a[b]): ...  # type: ignore
             g_annos = get_annotations(g, format=Format.FORWARDREF)
             h_annos = get_annotations(h, format=Format.FORWARDREF)
             a = list
@@ -151,18 +162,22 @@ class TestAnnotationForwardRef:
         assert h_anno.evaluate() == list[str]
 
         assert get_origin(g_anno) is None
-        assert get_origin(h_anno).evaluate() is list
+
+        origin = get_origin(h_anno)
+        assert origin is not None
+        assert origin.evaluate() is list
 
 
 class TestDirectAnnotation:
     # Tests where the DeferredAnnotation has been created from a concrete type
     def test_origin_args(self):
-        anno = DeferredAnnotation(list[str, int])
+        anno = DeferredAnnotation(dict[str, int])
 
         origin = get_origin(anno)
         args = get_args(anno)
 
-        assert origin.evaluate() is list
+        assert origin is not None
+        assert origin.evaluate() is dict
         assert args[0].evaluate() is str
         assert args[1].evaluate() is int
 
@@ -179,7 +194,9 @@ class TestDirectAnnotation:
         def f[**P](a: Callable[P, str]): ...
         anno = DeferredAnnotation(get_annotations(f)['a'])
 
-        assert get_origin(anno).evaluate() is Callable
+        origin = get_origin(anno)
+        assert origin is not None
+        assert origin.evaluate() is Callable
 
         args = get_args(anno)
 
@@ -189,17 +206,21 @@ class TestDirectAnnotation:
     def test_unflatten(self):
         anno = DeferredAnnotation(Callable[[bytes, str], int])
 
-        assert get_origin(anno).evaluate() is Callable
+        origin = get_origin(anno)
+        assert origin is not None
+        assert origin.evaluate() is Callable
 
         args = get_args(anno)
 
         assert args[0].evaluate() == [bytes, str]
-        assert args[1].evaluate() == int
+        assert args[1].evaluate() is int
 
     def test_union(self):
         anno = DeferredAnnotation(float | int)
 
-        assert get_origin(anno).evaluate() is types.UnionType
+        origin = get_origin(anno)
+        assert origin is not None
+        assert origin.evaluate() is types.UnionType
 
         args = get_args(anno)
         assert args[0].evaluate() is float
@@ -228,12 +249,14 @@ class TestGenericStrings:
         a_origin = get_origin(a_anno)
         a_args = get_args(a_anno)
 
+        assert a_origin is not None
         assert a_origin.evaluate() == "list"
         assert a_args[0].evaluate() == "int"
 
         b_origin = get_origin(b_anno)
         b_args = get_args(b_anno)
 
+        assert b_origin is not None
         assert b_origin.evaluate() is types.UnionType
         assert b_args[0].evaluate() == "float"
         assert b_args[1].evaluate() == "int"
@@ -251,12 +274,14 @@ class TestGenericStrings:
         a_origin = get_origin(a_anno)
         a_args = get_args(a_anno)
 
+        assert a_origin is not None
         assert a_origin.evaluate() == "list"
         assert a_args[0].evaluate() == "int"
 
         b_origin = get_origin(b_anno)
         b_args = get_args(b_anno)
 
+        assert b_origin is not None
         assert b_origin.evaluate() is types.UnionType
         assert b_args[0].evaluate() == "float"
         assert b_args[1].evaluate() == "int"

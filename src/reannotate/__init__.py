@@ -9,10 +9,8 @@ It also includes a helper `ReAnnotate` class to be used to act as the new
 """
 
 __lazy_modules__ = [
-    "reannotate._ast_tools",
     "reannotate._version",
     "collections.abc",
-    "copy",
     "typing",
 ]
 
@@ -23,7 +21,7 @@ import types
 
 # This requires the use of some private functions and classes from annotationlib
 # The alternative would be vendoring their implementations.
-from annotationlib import (  # type: ignore
+from annotationlib import (
     _build_closure,
     _get_dunder_annotations,
     _stringify_single,
@@ -40,38 +38,23 @@ except ImportError:  # pragma: no cover
     from collections.abc import Callable
 
 
-from ._ast_tools import NameReplacer
 from ._version import __version__ as __version__, __version_tuple__ as __version_tuple__
 
 
 # I want this to be well typed, but I **really** don't want to waste time
 # importing modules purely for typing at runtime
-TYPE_CHECKING = False
 if sys.version_info >= (3, 15):  # cover-req-ge3.15
     from collections.abc import Callable as Callable, Mapping as Mapping
     import typing as t
 else:  # cover-req-lt3.15
     # Hacks for imports prior to Python 3.15
     from _collections_abc import Callable as Callable, Mapping as Mapping
+    from ._lazy_import_314 import typing as t
 
-    if TYPE_CHECKING:
-        import typing as t
-    else:
-        # Hack lazy import for 3.14
-        t = sys.modules.get("typing")
-        # fmt: off
-        if t is None:  # pragma: no cover
-            class _LazyTyping:
-                def __getattr__(self, name):
-                    global t
-                    import typing
+    frozendict = types.MappingProxyType
 
-                    t = typing
-                    return getattr(t, name)
-            t = _LazyTyping()
-            del _LazyTyping
-        # fmt: on
-
+# These objects from "typing" are used at runtime
+TYPE_CHECKING = False
 if TYPE_CHECKING:
     from typing import (
         ParamSpec as _ParamSpec,
@@ -90,6 +73,8 @@ else:
     _ParamSpec = type(_f.__annotations__["spec"])
 
 
+# I would like to use a new-style sentinel here for 3.15,
+# but the type checker doesn't understand them yet.
 class _Sentinel:
     # Sentinel object for the case where None is valid
     def __repr__(self) -> str:
@@ -97,6 +82,21 @@ class _Sentinel:
 
 
 _sentinel = _Sentinel()
+
+
+class _NameReplacer(ast.NodeTransformer):
+    """
+    This class is used to 'fix' names from ForwardRef objects to hide the internals
+    """
+    _names: Mapping[str, t.Any]
+
+    def __init__(self, names: Mapping[str, t.Any]) -> None:
+        self._names = names
+
+    def visit_Name(self, node: ast.Name) -> ast.Name:
+        if (new_name := self._names.get(node.id, _sentinel)) is not _sentinel:
+            node = ast.Name(id=type_repr(new_name))
+        return node
 
 
 class EvaluationContext:
@@ -400,7 +400,7 @@ class DeferredAnnotation:
                     if (name_obj := names.get(self._raw_string, _sentinel)) is not _sentinel:
                         self._as_str = type_repr(name_obj)
                 else:
-                    visitor = NameReplacer(names)
+                    visitor = _NameReplacer(names)
                     ast_expr = ast.parse(self._raw_string, mode="eval").body
                     node = visitor.visit(ast_expr)
                     self._as_str = ast.unparse(node)
@@ -495,9 +495,9 @@ class DeferredAnnotation:
                         is_class=context._is_class,
                     )
                     # Patch in cell/globals/extra names
-                    ref.__globals__ = context.globals  # type: ignore
-                    ref.__cell__ = context._cells  # type: ignore
-                    ref.__extra_names__ = context._extra_names  # type: ignore
+                    ref.__globals__ = context.globals
+                    ref.__cell__ = context._cells
+                    ref.__extra_names__ = context._extra_names
 
                     return ref
 
@@ -532,7 +532,7 @@ class DeferredAnnotation:
             if isinstance(self._obj, ast.expr):
                 ast_expr = self._obj
             elif isinstance(self._obj, ForwardRef):
-                ast_expr = self._obj.__ast_node__  # type: ignore
+                ast_expr = self._obj.__ast_node__
                 if ast_expr is None:
                     ast_expr = ast.parse(self._obj.__forward_arg__, mode="eval").body
             else:
@@ -597,10 +597,7 @@ class ReAnnotate:
             k: v if isinstance(v, DeferredAnnotation) else DeferredAnnotation(v)
             for k, v in annotations.items()
         }
-        try:
-            self._deferred_annotations = frozendict(new_annos)  # type: ignore  # cover-req-ge3.15
-        except NameError:  # cover-req-lt3.15
-            self._deferred_annotations = new_annos
+        self._deferred_annotations = frozendict(new_annos)  # pyright: ignore[reportCallIssue]
 
     @property
     def deferred_annotations(self) -> dict[str, DeferredAnnotation]:
@@ -632,6 +629,16 @@ class ReAnnotate:
 
 @_overload
 def call_annotate_deferred(
+    annotate: ReAnnotate,
+    *,
+    owner: object = ...,
+    skip_globals_check: bool = ...,
+    _is_evaluate: t.Literal[False] = ...,
+) -> dict[str, DeferredAnnotation]: ...
+
+
+@_overload
+def call_annotate_deferred(
     annotate: Callable[[Format], t.Any],
     *,
     owner: object = ...,
@@ -651,7 +658,7 @@ def call_annotate_deferred(
 
 
 def call_annotate_deferred(
-    annotate: Callable[[Format], dict[str, t.Any]] | Callable[[Format], t.Any],
+    annotate: ReAnnotate |  Callable[[Format], dict[str, t.Any]] | Callable[[Format], t.Any],
     *,
     owner: object = None,
     skip_globals_check: bool = False,
@@ -674,7 +681,7 @@ def call_annotate_deferred(
     """
 
     try:
-        return annotate.deferred_annotations  # type: ignore
+        return annotate.deferred_annotations  # type: ignore[union-attr]
     except AttributeError:
         pass
 
@@ -843,7 +850,7 @@ def _extract_origin_and_args_from_ast(
         args = tuple(
             DeferredAnnotation(arg, evaluation_context=context)
             for arg in ast_args
-        )
+        )  # fmt: skip
 
     elif isinstance(ast_expr, ast.BinOp) and isinstance(ast_expr.op, ast.BitOr):
         # Handle union syntax
@@ -852,7 +859,7 @@ def _extract_origin_and_args_from_ast(
         args = tuple(
             DeferredAnnotation(arg, evaluation_context=context)
             for arg in ast_args
-        )
+        )  # fmt: skip
 
     return origin, args
 

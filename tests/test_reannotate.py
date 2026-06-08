@@ -296,18 +296,20 @@ class TestGetDeferredAnnotations(unittest.TestCase):
             get_deferred_annotations(obj)
 
     def test_annotate_nondict(self):
+        # We're testing that you get the expected type errors here
+        # so ignore typing errors from type checkers.
         def f(): pass
 
         def fail_func(format, /):
             return None
 
-        f.__annotate__ = fail_func
+        f.__annotate__ = fail_func  # type: ignore
 
         with self.assertRaises(TypeError):
             get_deferred_annotations(f)
 
         with self.assertRaises(TypeError):
-            call_annotate_deferred(fail_func)
+            call_annotate_deferred(fail_func)  # type: ignore
 
     def test_only_value_supported(self):
         class Example:
@@ -385,7 +387,7 @@ class TestCallAnnotateFunction(unittest.TestCase):
 
 class TestCallEvaluateFunction(unittest.TestCase):
     def test_call_type_obj(self):
-        type evaluable = list[str]
+        type evaluable = list[str]  # type: ignore  # I'm not making my tests uglier to appease PyRight
         evaluate_func = evaluable.evaluate_value
         deferred = call_evaluate_deferred(evaluate_func)
 
@@ -487,7 +489,7 @@ class TestExtra(unittest.TestCase):
         # This isn't used internally in this extracted version
         # but would be if it became an internal format
         class Example:
-            a: undefined
+            a: undefined  # type: ignore
 
         a_anno = get_deferred_annotations(Example)['a']
         # Extract the evaluation context, and a forwardref
@@ -529,7 +531,7 @@ class TestStringLiteral:
         class Example:
             a: "int"
             b: float
-            c: undefined  # Prevent caching of VALUE annotations
+            c: undefined  # type: ignore  # Prevent caching of VALUE annotations
 
         annos = get_deferred_annotations(Example)
 
