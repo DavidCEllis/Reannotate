@@ -43,7 +43,6 @@ from ._version import __version__ as __version__, __version_tuple__ as __version
 
 # I want this to be well typed, but I **really** don't want to waste time
 # importing modules purely for typing at runtime
-TYPE_CHECKING = False
 if sys.version_info >= (3, 15):  # cover-req-ge3.15
     from collections.abc import Callable as Callable, Mapping as Mapping
     import typing as t
@@ -55,6 +54,7 @@ else:  # cover-req-lt3.15
     frozendict = types.MappingProxyType
 
 # These objects from "typing" are used at runtime
+TYPE_CHECKING = False
 if TYPE_CHECKING:
     from typing import (
         ParamSpec as _ParamSpec,
