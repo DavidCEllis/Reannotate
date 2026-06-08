@@ -9,10 +9,8 @@ It also includes a helper `ReAnnotate` class to be used to act as the new
 """
 
 __lazy_modules__ = [
-    "reannotate._ast_tools",
     "reannotate._version",
     "collections.abc",
-    "copy",
     "typing",
 ]
 
@@ -40,7 +38,6 @@ except ImportError:  # pragma: no cover
     from collections.abc import Callable
 
 
-from ._ast_tools import NameReplacer
 from ._version import __version__ as __version__, __version_tuple__ as __version_tuple__
 
 
@@ -85,6 +82,21 @@ class _Sentinel:
 
 
 _sentinel = _Sentinel()
+
+
+class _NameReplacer(ast.NodeTransformer):
+    """
+    This class is used to 'fix' names from ForwardRef objects to hide the internals
+    """
+    _names: Mapping[str, t.Any]
+
+    def __init__(self, names: Mapping[str, t.Any]) -> None:
+        self._names = names
+
+    def visit_Name(self, node: ast.Name) -> ast.Name:
+        if (new_name := self._names.get(node.id, _sentinel)) is not _sentinel:
+            node = ast.Name(id=type_repr(new_name))
+        return node
 
 
 class EvaluationContext:
@@ -388,7 +400,7 @@ class DeferredAnnotation:
                     if (name_obj := names.get(self._raw_string, _sentinel)) is not _sentinel:
                         self._as_str = type_repr(name_obj)
                 else:
-                    visitor = NameReplacer(names)
+                    visitor = _NameReplacer(names)
                     ast_expr = ast.parse(self._raw_string, mode="eval").body
                     node = visitor.visit(ast_expr)
                     self._as_str = ast.unparse(node)
