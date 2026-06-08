@@ -55,6 +55,8 @@ else:  # cover-req-lt3.15
     from _collections_abc import Callable as Callable, Mapping as Mapping
     from ._lazy_import_314 import typing as t
 
+    frozendict = types.MappingProxyType
+
 # These objects from "typing" are used at runtime
 if TYPE_CHECKING:
     from typing import (
@@ -583,10 +585,7 @@ class ReAnnotate:
             k: v if isinstance(v, DeferredAnnotation) else DeferredAnnotation(v)
             for k, v in annotations.items()
         }
-        try:
-            self._deferred_annotations = frozendict(new_annos)  # type: ignore  # cover-req-ge3.15
-        except NameError:  # cover-req-lt3.15
-            self._deferred_annotations = new_annos
+        self._deferred_annotations = frozendict(new_annos)  # pyright: ignore[reportCallIssue]
 
     @property
     def deferred_annotations(self) -> dict[str, DeferredAnnotation]:
