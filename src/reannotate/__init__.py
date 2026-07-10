@@ -822,11 +822,12 @@ def get_deferred_annotations(
 # Typing Helpers
 def _unwrap_union_syntax(expr: ast.BinOp) -> list[ast.expr]:
     args = []
-    for elt in (expr.left, expr.right):
-        if isinstance(elt, ast.BinOp) and isinstance(elt.op, ast.BitOr):
-            args.extend(_unwrap_union_syntax(elt))
-        else:
-            args.append(elt)
+    left_elt = expr.left
+    if isinstance(left_elt, ast.BinOp) and isinstance(left_elt.op, ast.BitOr):
+        args.extend(_unwrap_union_syntax(left_elt))
+    else:
+        args.append(left_elt)
+    args.append(expr.right)
     return args
 
 

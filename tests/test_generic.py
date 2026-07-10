@@ -78,6 +78,17 @@ class TestGenericAnnotations:
         assert args[2].evaluate() is str
         assert args[3].evaluate() == list[int]
 
+    def test_parenthesised_unflattened(self):
+        # test that parenthesised __or__ calls are not flattened
+        def f(a: int | (float | str) | list): ...
+
+        a_anno = get_deferred_annotations(f)['a']
+
+        args = get_args(a_anno)
+        assert args[0].evaluate() is int
+        assert args[1].evaluate() == float | str
+        assert args[2].evaluate() is list
+
 
 class TestAnnotationForwardRef:
     # Test evaluating from a ForwardRef
