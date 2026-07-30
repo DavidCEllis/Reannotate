@@ -30,9 +30,17 @@ dynamic = ['version']
 
 [dependency-groups]
 dev = [
+    {include-group = "test"},
+    {include-group = "type-check"},
+]
+
+test = [
     "pytest>=8.4",
     "pytest-cov>=6.1",
     "coverage-simple-excludes>=1.1.1",
+]
+
+type-check = [
     "mypy>=1.20.0",
 ]
 
