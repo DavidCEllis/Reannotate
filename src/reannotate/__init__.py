@@ -553,8 +553,8 @@ class DeferredAnnotation:
             else:
                 # Potentially standard generics or no origin
                 try:
-                    base_origin = getattr(self._obj, "__origin__")
-                    base_args = getattr(self._obj, "__args__")
+                    base_origin = self._obj.__origin__
+                    base_args = self._obj.__args__
                 except AttributeError:
                     return None, ()
 
