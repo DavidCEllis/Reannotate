@@ -95,6 +95,11 @@ reportAttributeAccessIssue = false
 [tool.ruff]
 extend-exclude = ["perf/*.py"]
 
+[tool.ruff.lint]
+# I001 / RUF023 - Import and slot sorting rules.
+# BLE001 / S110 - Except Exception - used intentionally as VALUE annotations could raise any exception.
+ignore = ["BLE001", "I001", "RUF023", "S110"]
+
 [tool.ruff.lint.per-file-ignores]
 # Ignore undefined names in test files - these are used for ForwardRef checks
 "src/*.py" = ["F811"]   # Ruff doesn't recognise fake overloads as overloads
