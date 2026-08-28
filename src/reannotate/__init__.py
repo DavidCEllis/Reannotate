@@ -757,22 +757,36 @@ def call_annotate_deferred(
                 errmsg = f"{annotate!r} returned a non-dict"
             raise TypeError(errmsg)
 
-        return {
-            key: DeferredAnnotation(
-                (
-                    val.__ast_node__
-                    if isinstance(val, _Stringifier)
-                    else _stringify_single(val)
-                ),
-                evaluation_context=context if not isinstance(val, str) else None,
-                resolved_value=(
-                    value_annotations[key]  # type: ignore
-                    if value_annotations is not _sentinel
-                    else _sentinel
-                ),
-            )
-            for key, val in annos.items()
-        }
+        if value_annotations is _sentinel:
+            deferred_annos = {
+                key: DeferredAnnotation(
+                    (
+                        val.__ast_node__
+                        if isinstance(val, _Stringifier)
+                        else _stringify_single(val)
+                    ),
+                    evaluation_context=context if not isinstance(val, str) else None,
+                    resolved_value=_sentinel,
+                )
+                for key, val in annos.items()
+            }
+        else:
+            # Filter out keys that are not in value annotations
+            deferred_annos = {
+                key: DeferredAnnotation(
+                    (
+                        val.__ast_node__
+                        if isinstance(val, _Stringifier)
+                        else _stringify_single(val)
+                    ),
+                    evaluation_context=context if not isinstance(val, str) else None,
+                    resolved_value=value_annotations[key],  # type: ignore
+                )
+                for key, val in annos.items()
+                if key in value_annotations
+            }
+
+        return deferred_annos
 
 
 def call_evaluate_deferred(

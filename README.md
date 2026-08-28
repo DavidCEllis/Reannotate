@@ -342,6 +342,41 @@ v_anno = get_deferred_annotations(f)['v']
 print(v_anno.evaluate())  # Vector
 ```
 
+## Known limitations
+
+### Conditional annotations
+
+If there are annotations that should not be present due to a condition, this condition
+will not be respected if the `__annotate__` function fails under `Format.VALUE` annotations.
+
+This is due to deferred annotations being built on `Format.STRING` annotations which
+also don't respect conditional annotations. If `Format.VALUE` will succeed this is used
+to filter out conditional annotations.
+
+```python
+from reannotate import get_deferred_annotations
+
+class OK:
+    x: str
+    if False:
+        y: unknown
+
+class Fail:
+    x: unknown
+    if False:
+        y: str
+
+print(get_deferred_annotations(OK))
+print(get_deferred_annotations(Fail))
+```
+
+```python
+{'x': DeferredAnnotation('str')}
+{'x': DeferredAnnotation('unknown'), 'y': DeferredAnnotation('str')}
+```
+
+The condition is also ignored if the fake globals check is skipped.
+
 ## What about getting this in the stdlib?
 
 Ideally I would like to get this kind of functionality from the stdlib, as currently it

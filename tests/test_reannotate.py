@@ -363,7 +363,7 @@ class TestCallAnnotateFunction(unittest.TestCase):
         annotate = AnnotateCallable()
 
         annos = call_annotate_deferred(annotate)
-        assert annos['a'].evaluate() is int
+        self.assertIs(annos['a'].evaluate(), int)
 
     def test_fake_globals_supporting_callable_raises(self):
         # If a callable claims to support fake globals, but is not a function
@@ -500,7 +500,7 @@ class TestExtra(unittest.TestCase):
 
         a_ref = a_anno.evaluate(format=Format.FORWARDREF)
 
-        assert isinstance(a_ref, ForwardRef)
+        self.assertIsInstance(a_ref, ForwardRef)
 
         a_val, a_used_ref = a_context.evaluate(a_ref, use_forwardref=True)
 
@@ -525,7 +525,7 @@ class TestExtra(unittest.TestCase):
         self.assertIsInstance(__version_tuple__, tuple)
 
 
-class TestStringLiteral:
+class TestStringLiteral(unittest.TestCase):
     def test_string_literal(self):
         # Manually stringified annotations don't get evaluated
         class Example:
@@ -535,6 +535,25 @@ class TestStringLiteral:
 
         annos = get_deferred_annotations(Example)
 
-        assert annos['a'].evaluate() == "int"
-        assert annos['a'].evaluate(format=Format.STRING) == "int"  # Not double quoted
-        assert annos['b'].evaluate() is float
+        self.assertEqual(annos['a'].evaluate(), "int")
+        self.assertEqual(annos['a'].evaluate(format=Format.STRING), "int")
+        self.assertIs(annos['b'].evaluate(), float)
+
+
+class TestConditionalHint(unittest.TestCase):
+    def test_successful_ignore(self):
+        class Example:
+            a: int
+            if False:
+                b: str
+
+        self.assertNotIn('b', get_deferred_annotations(Example))
+
+    @unittest.expectedFailure
+    def test_failed_ignore(self):
+        class Example:
+            a: unknown  # type: ignore
+            if False:
+                b: str
+
+        self.assertNotIn('b', get_deferred_annotations(Example))
