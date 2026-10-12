@@ -142,6 +142,9 @@ class EvaluationContext:
         self._type_params = type_params
         self._extra_names = extra_names
 
+    def __repr__(self):
+        return f"<EvaluationContext global_keys={list(self.globals)!r}, local_keys={list(self.locals)!r}>"
+
     @classmethod
     def _from_forwardref(cls, ref: ForwardRef) -> t.Self:
         # Get the globals and locals contexts for reference evaluation
@@ -247,6 +250,10 @@ class EvaluationContext:
                     pass
                 else:
                     locals.setdefault(cell_name, cell_value)
+
+        if self._extra_names is not None:
+            locals.update(self._extra_names)
+
         return locals
 
     def evaluate(
@@ -270,11 +277,9 @@ class EvaluationContext:
                 "'obj' must be a string, ast expression, ForwardRef or code object"
             )
 
-        locals = dict(self.locals)
-        if self._extra_names is not None:
-            locals.update(self._extra_names)
+        locals = self.locals  # No need to copy as the property makes a new copy
         if extra_names is not None:
-            locals.update(extra_names)
+            locals |= extra_names
 
         try:
             return eval(code, globals=self.globals, locals=locals), False
