@@ -1,4 +1,5 @@
 import ast
+import copy
 import typing
 import unittest
 
@@ -329,6 +330,75 @@ class TestGetDeferredAnnotations(unittest.TestCase):
 
         self.assertEqual(annos['a'].evaluate(), int)
         self.assertEqual(annos['a'].evaluate(format=Format.STRING), 'int')
+
+    def test_ast_extraction(self):
+        class Example:
+            a: list[int] | dict[str, tuple[int, int]]
+            b: unknown[int]  # type: ignore
+
+        annos = get_deferred_annotations(Example)
+        fr_annos = get_annotations(Example, format=Format.FORWARDREF)
+
+        a_anno = annos['a']
+
+        assert ast.unparse(a_anno.as_ast) == "list[int] | dict[str, tuple[int, int]]"
+
+        # Check the extra_names from a forwardref created AST are still used
+        b_deferred = DeferredAnnotation(fr_annos['b'])
+
+        ctx = b_deferred.evaluation_context
+        assert ctx is not None
+
+        extra_names = ctx._extra_names
+        assert extra_names is not None
+
+        extra_name = next(iter(extra_names))
+
+        assert ast.unparse(b_deferred.as_ast).startswith(f"unknown[{extra_name}]")
+
+
+    def test_replace(self):
+        def func():
+            Original = str
+            Replacement = int
+
+            def inner(
+                o: Original,  # type: ignore
+                r: Replacement,  # type: ignore
+                d: dict[str, str],
+            ) -> None:
+                pass
+
+            return inner
+
+        f = func()
+
+        annos = get_deferred_annotations(f)
+
+        assert annos['o'].evaluate() is str
+        assert annos['r'].evaluate() is int
+
+        # Test with new value
+        new_anno_obj = copy.replace(annos['o'], obj="Replacement")
+        assert new_anno_obj.evaluate() is int
+
+        # Test with new context
+        new_anno_ctx = copy.replace(annos['o'], evaluation_context=EvaluationContext(globals={"Original": float}))
+        assert new_anno_ctx.evaluate() is float
+
+        # Test with AST conversion
+        d_anno = annos['d']
+        assert isinstance(d_anno._obj, ast.expr)
+        assert d_anno._resolved_value == dict[str, str]
+
+        # Converted to str to prevent accidental mutation
+        d_copy = copy.replace(d_anno)
+        assert isinstance(d_copy._obj, ast.expr)
+        assert d_copy._obj is not d_anno._obj
+
+        assert d_copy._resolved_value != dict[str, str]
+        d_copy.evaluate()
+        assert d_copy._resolved_value == dict[str, str]
 
 
 class TestCallAnnotateFunction(unittest.TestCase):

@@ -364,6 +364,20 @@ class DeferredAnnotation:
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self.as_str!r})"
 
+    def __replace__(self, *, obj=_sentinel, evaluation_context=None, resolved_value=_sentinel):
+        if obj is _sentinel:
+            if isinstance(self._obj, ast.expr):
+                # Recreate the AST expression to make a new copy to prevent mutating the original
+                obj = self.as_ast
+            else:
+                obj = self._obj
+
+        if evaluation_context is None:
+            evaluation_context = self.evaluation_context
+
+        # resolved_value is not carried to a new annotation as the object or context will have changed
+        return type(self)(obj=obj, evaluation_context=evaluation_context, resolved_value=resolved_value)
+
     @property
     def is_resolved(self) -> bool:
         return self._resolved_value is not _sentinel
@@ -406,6 +420,18 @@ class DeferredAnnotation:
                     self._as_str = ast.unparse(node)
 
         return self._as_str
+
+    @property
+    def as_ast(self) -> ast.expr:
+        """
+        Get a raw representation of the annotation as an AST expression
+        This does *not* include replacing any 'extra_names' from forward references.
+
+        This is always reconstructed from a string to avoid users mutating the original AST
+
+        :return: annotation as ast expression
+        """
+        return ast.parse(self._raw_string, mode="eval").body
 
     @property
     def evaluation_context(self) -> EvaluationContext | None:
@@ -675,7 +701,7 @@ def call_annotate_deferred(
     CPython and has not been replaced by the user.
 
     :param annotate: ``__annotate__`` function
-    :param owner: The object thaat owns the annotate function, if it exists
+    :param owner: The object that owns the annotate function, if it exists
     :param skip_globals_check: Skip the call to VALUE_WITH_FAKE_GLOBALS - assume it is supported
     :returns: a dictionary of string keys and ``DeferredAnnotation`` values
     """
